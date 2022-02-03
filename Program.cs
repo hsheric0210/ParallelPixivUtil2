@@ -17,8 +17,8 @@ namespace ParallelPixivUtil2
 		public static int Main(string[] args)
 		{
 			Console.WriteLine("ParallelPixivUtil2 - PixivUtil2 with parallel download support");
-			Console.WriteLine("Note that this program should located NEXT TO pixivutil2.exe");
-			Console.WriteLine("I'd recommend you do not use the MAIN pixiv account. It could be suspended due unnatural activities. (DDoS)");
+
+			Console.WriteLine($"DEBUG: Current console encoding is '{Console.OutputEncoding.EncodingName}'");
 
 			if (!File.Exists("pixivutil2.exe"))
 			{
@@ -190,9 +190,32 @@ namespace ParallelPixivUtil2
 			string? data = param.Data;
 			if (!string.IsNullOrEmpty(data) && !data.StartsWith('['))
 			{
-				buffer.AppendLine(data);
-				if (alsoConsole)
-					Console.WriteLine(data);
+				StringComparison strCmpOpts = StringComparison.InvariantCultureIgnoreCase;
+				if (data.StartsWith("Start downloading...", strCmpOpts))
+				{
+					data = data.Replace("?", "");
+					int indexOfCompleted = data.LastIndexOf("Completed in", strCmpOpts);
+					if (indexOfCompleted > 0 && !data.Contains("Creating directory", strCmpOpts))
+						data = data[..21 /* "Start downloading... ".Length */] + data[indexOfCompleted..];
+					else
+						data = data[..20 /* "Start downloading...".Length */];
+				}
+				else if (data.StartsWith('?') && data.Contains("iB", strCmpOpts))
+				{
+					data = data.Replace("?", "");
+					int indexOfCompleted = data.LastIndexOf("Completed in", strCmpOpts);
+					if (indexOfCompleted > 0)
+						data = data[indexOfCompleted..];
+					else
+						data = null;
+				}
+
+				if (data != null)
+				{
+					buffer.AppendLine(data);
+					if (alsoConsole)
+						Console.WriteLine(data);
+				}
 			}
 		});
 	}
