@@ -103,6 +103,8 @@ namespace ParallelPixivUtil2
 				Console.WriteLine("Executing PixivUtil2 (in parallel)");
 				Parallel.ForEach(memberIds, new ParallelOptions { MaxDegreeOfParallelism = parallellism }, memberId =>
 				{
+					Console.WriteLine($"Executing PixivUtil2 for {memberId}");
+
 					try
 					{
 						var pixivutil2 = new Process();
