@@ -21,13 +21,13 @@ namespace ParallelPixivUtil2
 
 			if (!File.Exists("list.txt"))
 			{
-				Console.WriteLine("ERROR: list.lst is not located in working directory.");
+				Console.WriteLine("ERROR: list.txt is not located in working directory.");
 				return 1;
 			}
 
 			if (!File.Exists("config.ini"))
 			{
-				Console.WriteLine("WARN: config.ini is not located in working directory.");
+				Console.WriteLine("ERROR: config.ini is not located in working directory.");
 				return 1;
 			}
 
