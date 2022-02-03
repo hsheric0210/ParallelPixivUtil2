@@ -2,11 +2,21 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
 
 namespace ParallelPixivUtil2
 {
 	public class Program
 	{
+		private const string STDOUT_LOG_NAME = "{0:yyyy-MM-dd_HH-mm-ss-FFFFFF}-{1}-STDOUT.log";
+		private const string STDERR_LOG_NAME = "{0:yyyy-MM-dd_HH-mm-ss-FFFFFF}-{1}-STDERR.log";
+		private static readonly UTF8Encoding UTF_8_WITHOUT_BOM = new(false);
+		private static readonly FileStreamOptions LOG_FILE_STREAM_OPTIONS = new()
+		{
+			Access = FileAccess.Write,
+			Mode = FileMode.Create
+		};
+
 		public static int Main(string[] args)
 		{
 			Console.WriteLine("ParallelPixivUtil2 - PixivUtil2 with parallel download support");
@@ -96,13 +106,24 @@ namespace ParallelPixivUtil2
 					Directory.CreateDirectory("databases");
 				}
 
+				if (!Directory.Exists("logs"))
+				{
+					Console.WriteLine("Creating logs directory");
+					Directory.CreateDirectory("logs");
+				}
+
 				var ini = new IniFile("parallel.ini");
 				if (!int.TryParse(ini.read("maxParallellism"), out int parallellism))
 					parallellism = 5;
 
 				Console.WriteLine("Executing PixivUtil2 (in parallel)");
+
 				Parallel.ForEach(memberIds, new ParallelOptions { MaxDegreeOfParallelism = parallellism }, memberId =>
 				{
+					DateTime now = DateTime.Now;
+					var stdoutFile = $"logs\\{string.Format(STDOUT_LOG_NAME, now, memberId)}";
+					var stderrFile = $"logs\\{string.Format(STDERR_LOG_NAME, now, memberId)}";
+
 					Console.WriteLine($"Executing PixivUtil2 for {memberId}");
 
 					try
@@ -111,22 +132,71 @@ namespace ParallelPixivUtil2
 						pixivutil2.StartInfo.FileName = "pixivutil2.exe";
 						pixivutil2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
 						pixivutil2.StartInfo.Arguments = $"-s 1 {memberId} -x -c \"config\\{memberId}.ini\"";
-						pixivutil2.StartInfo.UseShellExecute = true;
+						pixivutil2.StartInfo.UseShellExecute = false;
+						pixivutil2.StartInfo.RedirectStandardOutput = true;
+						pixivutil2.StartInfo.RedirectStandardError = true;
 						pixivutil2.Start();
+
+						// Redirect STDOUT, STDERR
+						var stdoutBuffer = new StringBuilder();
+						var stderrBuffer = new StringBuilder();
+						pixivutil2.OutputDataReceived += getBufferRedirectHandler(stdoutBuffer, false);
+						pixivutil2.ErrorDataReceived += getBufferRedirectHandler(stderrBuffer, true);
+						pixivutil2.BeginOutputReadLine();
+						pixivutil2.BeginErrorReadLine();
+
 						pixivutil2.WaitForExit();
+
+						// Write log buffer to the file and print the path
+						try
+						{
+							if (writeLog(stdoutFile, stdoutBuffer))
+								Console.WriteLine($"STDOUT log for {memberId}: \"{stdoutFile}\"");
+							if (writeLog(stderrFile, stderrBuffer))
+								Console.WriteLine($"STDERR log for {memberId}: \"{stderrFile}\"");
+						}
+						catch (Exception ex)
+						{
+							Console.WriteLine($"ERROR: Failed to write log: {ex}");
+						}
 					}
-					catch (Exception ex2)
+					catch (Exception ex)
 					{
-						Console.WriteLine("ERROR: Failed to execute pixivutil2:" + ex2.ToString());
+						Console.WriteLine($"ERROR: Failed to execute pixivutil2: {ex}");
 					}
 				});
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine("ERROR:" + ex.ToString());
+				Console.WriteLine($"ERROR: {ex}");
 			}
 
 			return 0;
 		}
+
+		private static bool writeLog(string path, StringBuilder sb)
+		{
+			if (sb.Length > 0)
+			{
+				var stream = new StreamWriter(path, UTF_8_WITHOUT_BOM, LOG_FILE_STREAM_OPTIONS);
+				stream.Write(sb.ToString());
+				stream.Close();
+
+				return true;
+			}
+
+			return false;
+		}
+
+		private static DataReceivedEventHandler getBufferRedirectHandler(StringBuilder buffer, bool alsoConsole) => new((_, param) =>
+		{
+			string? data = param.Data;
+			if (!string.IsNullOrEmpty(data))
+			{
+				buffer.AppendLine(data);
+				if (alsoConsole)
+					Console.WriteLine(data);
+			}
+		});
 	}
 }
