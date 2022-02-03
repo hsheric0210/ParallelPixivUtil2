@@ -31,6 +31,12 @@ namespace ParallelPixivUtil2
 				return 1;
 			}
 
+			if (!File.Exists("parallel.ini"))
+			{
+				var ini = new IniFile("parallel.ini");
+				ini.write("maxParallellism", "5");
+			}
+
 			try
 			{
 				Console.WriteLine("Reading all lines of list.txt");
@@ -90,8 +96,12 @@ namespace ParallelPixivUtil2
 					Directory.CreateDirectory("databases");
 				}
 
+				var ini = new IniFile("parallel.ini");
+				if (!int.TryParse(ini.read("maxParallellism"), out int parallellism))
+					parallellism = 5;
+
 				Console.WriteLine("Executing PixivUtil2 (in parallel)");
-				Parallel.ForEach(memberIds, new ParallelOptions { MaxDegreeOfParallelism = 8 }, memberId =>
+				Parallel.ForEach(memberIds, new ParallelOptions { MaxDegreeOfParallelism = parallellism }, memberId =>
 				{
 					try
 					{
