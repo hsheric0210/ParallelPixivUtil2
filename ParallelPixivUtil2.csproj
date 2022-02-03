@@ -5,6 +5,15 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <StartupObject>ParallelPixivUtil2.Program</StartupObject>
+    <Authors>hsheric0210</Authors>
+    <Description>Run PixivUtil2 in parallel!</Description>
+    <PackageId>ParallelPixivUtil2</PackageId>
+    <Product>Parallel PixivUtil2</Product>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <Optimize>False</Optimize>
   </PropertyGroup>
 
 </Project>

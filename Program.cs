@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
+﻿using System.Diagnostics;
 using System.Text;
 
 namespace ParallelPixivUtil2
@@ -191,7 +188,7 @@ namespace ParallelPixivUtil2
 		private static DataReceivedEventHandler getBufferRedirectHandler(StringBuilder buffer, bool alsoConsole) => new((_, param) =>
 		{
 			string? data = param.Data;
-			if (!string.IsNullOrEmpty(data))
+			if (!string.IsNullOrEmpty(data) && !data.StartsWith('['))
 			{
 				buffer.AppendLine(data);
 				if (alsoConsole)
