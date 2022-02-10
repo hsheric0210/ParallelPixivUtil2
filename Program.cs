@@ -45,10 +45,10 @@ namespace ParallelPixivUtil2
 				Console.WriteLine("Reading all lines of list.txt");
 				string[] memberIds = File.ReadAllLines("list.txt");
 
-				Console.WriteLine("Reading all lines of config.ini");
-				string[] cfgLines = File.ReadAllLines("config.ini");
+				//Console.WriteLine("Reading all lines of config.ini");
+				//string[] cfgLines = File.ReadAllLines("config.ini");
 
-				createDirectoryIfNotExists("config");
+				//createDirectoryIfNotExists("config");
 
 				//Console.WriteLine("Writing member-specific config files (in parallel)");
 				//writeMemberConfigs(memberIds, cfgLines);
