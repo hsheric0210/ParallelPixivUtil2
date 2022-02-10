@@ -5,14 +5,24 @@ namespace ParallelPixivUtil2
 {
 	public class Program
 	{
-		private const string STDOUT_LOG_NAME = "{0:yyyy-MM-dd_HH-mm-ss-FFFFFF}-{1}-STDOUT.log";
-		private const string STDERR_LOG_NAME = "{0:yyyy-MM-dd_HH-mm-ss-FFFFFF}-{1}-STDERR.log";
-		private static readonly UTF8Encoding UTF_8_WITHOUT_BOM = new(false);
-		private static readonly FileStreamOptions LOG_FILE_STREAM_OPTIONS = new()
+		private static bool requireExists(string fileName)
 		{
-			Access = FileAccess.Write,
-			Mode = FileMode.Create
-		};
+			if (!File.Exists(fileName))
+			{
+				Console.WriteLine($"ERROR: {fileName} is not located in working directory.");
+				return true;
+			}
+			return false;
+		}
+
+		private static void createDirectoryIfNotExists(string dirName)
+		{
+			if (!Directory.Exists(dirName))
+			{
+				Console.WriteLine($"Creating {dirName} directory");
+				Directory.CreateDirectory(dirName);
+			}
+		}
 
 		public static int Main(string[] args)
 		{
@@ -20,23 +30,9 @@ namespace ParallelPixivUtil2
 
 			Console.WriteLine($"DEBUG: Current console encoding is '{Console.OutputEncoding.EncodingName}'");
 
-			if (!File.Exists("pixivutil2.exe"))
-			{
-				Console.WriteLine("ERROR: pixivutil2.exe is not located in working directory.");
+			var py = File.Exists("pixivutil2.py");
+			if (!py && requireExists("PixivUtil2.exe") || requireExists("list.txt") || requireExists("config.ini"))
 				return 1;
-			}
-
-			if (!File.Exists("list.txt"))
-			{
-				Console.WriteLine("ERROR: list.txt is not located in working directory.");
-				return 1;
-			}
-
-			if (!File.Exists("config.ini"))
-			{
-				Console.WriteLine("ERROR: config.ini is not located in working directory.");
-				return 1;
-			}
 
 			if (!File.Exists("parallel.ini"))
 			{
@@ -52,114 +48,84 @@ namespace ParallelPixivUtil2
 				Console.WriteLine("Reading all lines of config.ini");
 				string[] cfgLines = File.ReadAllLines("config.ini");
 
-				if (!Directory.Exists("config"))
+				createDirectoryIfNotExists("config");
+
+				//Console.WriteLine("Writing member-specific config files (in parallel)");
+				//writeMemberConfigs(memberIds, cfgLines);
+
+				createDirectoryIfNotExists("databases");
+				createDirectoryIfNotExists("logs");
+				
+				// Dump member informations
+				try
 				{
-					Console.WriteLine("Creating config directory");
-					Directory.CreateDirectory("config");
+					var pixivutil2 = new Process();
+					pixivutil2.StartInfo.FileName = py ? "Python.exe" : "PixivUtil2.exe";
+					pixivutil2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
+					pixivutil2.StartInfo.Arguments = $"{(py ? "PixivUtil2.py" : "")} -s q memberdata.txt {string.Join(' ', memberIds)} -x -l \"logs\\dumpMembers.log\"";
+					pixivutil2.StartInfo.UseShellExecute = true;
+					pixivutil2.Start();
+					pixivutil2.WaitForExit();
+				}
+				catch (Exception ex)
+				{
+					Console.WriteLine($"ERROR: Failed to execute PixivUtil2: {ex}");
 				}
 
-				Console.WriteLine("Writing member-specific config files (in parallel)");
-				Parallel.ForEach(memberIds, memberId =>
+				if (!File.Exists("memberdata.txt"))
+					Console.WriteLine($"ERROR: Failed to dump member informations (Dump file not found)");
+
+				var memberPageList = new List<(long, int, int)>();
+
+				foreach (string line in File.ReadAllLines("memberdata.txt"))
 				{
-					var file = $"config\\{memberId}.ini";
-					if (File.Exists(file))
-						Console.WriteLine($"Config file already exists for {memberId}");
-					else
+					if (string.IsNullOrWhiteSpace(line))
+						continue;
+
+					string[] pieces = line.Split(',');
+					if (!long.TryParse(pieces[0], out long memberId) || !int.TryParse(pieces[1], out int totalImages))
+						continue;
+
+					if (totalImages > 0)
 					{
-						Console.WriteLine($"Creating member-specific config for {memberId}");
-
-						int lineCount = cfgLines.Length;
-						string[] newListLines = new string[lineCount];
-						for (int i = 0; i < lineCount; i++)
-						{
-							string line = cfgLines[i];
-							string modifiedLine;
-							if (line.StartsWith("dbPath"))
-							{
-								int eqindex = line.IndexOf('=');
-								if (eqindex + 1 < line.Length && char.IsWhiteSpace(line[eqindex + 1]))
-									eqindex++;
-								modifiedLine = $"{line[..(eqindex + 1)]}.\\databases\\{memberId}.sqlite";
-							}
-							//else if (line.StartsWith("rootDirectory"))
-							//{
-							//	int eqindex = line.IndexOf('=');
-							//	if (eqindex + 1 < line.Length && char.IsWhiteSpace(line[eqindex + 1]))
-							//		eqindex++;
-							//	modifiedLine = $"{line[..(eqindex + 1)]}.\\{memberId}";
-							//}
-							else
-								modifiedLine = line;
-							newListLines[i] = modifiedLine;
-						}
-
-						File.WriteAllLines(file, newListLines);
+						int maxImagesPerPage = 48;
+						int pageCount = (totalImages - totalImages % maxImagesPerPage) / maxImagesPerPage + 1;
+						for (int i = 1; i <= pageCount; i++)
+							memberPageList.Add((memberId, i, pageCount - i + 1));
 					}
-				});
-
-				if (!Directory.Exists("databases"))
-				{
-					Console.WriteLine("Creating databases directory");
-					Directory.CreateDirectory("databases");
-				}
-
-				if (!Directory.Exists("logs"))
-				{
-					Console.WriteLine("Creating logs directory");
-					Directory.CreateDirectory("logs");
+					else
+						Console.WriteLine($"Member {memberId} doesn't have any images! Skipping");
 				}
 
 				var ini = new IniFile("parallel.ini");
 				if (!int.TryParse(ini.read("maxParallellism"), out int parallellism))
 					parallellism = 5;
 
-				Console.WriteLine("Executing PixivUtil2 (in parallel)");
+				Console.WriteLine("Start downloading");
 
-				Parallel.ForEach(memberIds, new ParallelOptions { MaxDegreeOfParallelism = parallellism }, memberId =>
+				
+				Parallel.ForEach(memberPageList, new ParallelOptions { MaxDegreeOfParallelism = parallellism }, (member, _, _) =>
 				{
-					DateTime now = DateTime.Now;
-					var stdoutFile = $"logs\\{string.Format(STDOUT_LOG_NAME, now, memberId)}";
-					var stderrFile = $"logs\\{string.Format(STDERR_LOG_NAME, now, memberId)}";
+					long memberId = member.Item1;
+					int page = member.Item2;
+					int fileIndex = member.Item3;
 
-					Console.WriteLine($"Executing PixivUtil2 for {memberId}");
+					DateTime now = DateTime.Now;
+					Console.WriteLine($"Executing PixivUtil2 for {memberId}, page(new to old) {page}, page(old to new) {fileIndex}");
 
 					try
 					{
 						var pixivutil2 = new Process();
-						pixivutil2.StartInfo.FileName = "pixivutil2.exe";
+						pixivutil2.StartInfo.FileName = py ? "python.exe" : "PixivUtil2.exe";
 						pixivutil2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
-						pixivutil2.StartInfo.Arguments = $"-s 1 {memberId} -x -c \"config\\{memberId}.ini\"";
-						pixivutil2.StartInfo.UseShellExecute = false;
-						pixivutil2.StartInfo.RedirectStandardOutput = true;
-						pixivutil2.StartInfo.RedirectStandardError = true;
+						pixivutil2.StartInfo.Arguments = $"{(py ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page} --ep={page} -x --db=\"databases\\{memberId}.p{fileIndex}.db\" -l \"logs\\{memberId}.p{fileIndex}.log\"";
+						pixivutil2.StartInfo.UseShellExecute = true;
 						pixivutil2.Start();
-
-						// Redirect STDOUT, STDERR
-						var stdoutBuffer = new StringBuilder();
-						var stderrBuffer = new StringBuilder();
-						pixivutil2.OutputDataReceived += getBufferRedirectHandler(stdoutBuffer, false);
-						pixivutil2.ErrorDataReceived += getBufferRedirectHandler(stderrBuffer, true);
-						pixivutil2.BeginOutputReadLine();
-						pixivutil2.BeginErrorReadLine();
-
 						pixivutil2.WaitForExit();
-
-						// Write log buffer to the file and print the path
-						try
-						{
-							if (writeLog(stdoutFile, stdoutBuffer))
-								Console.WriteLine($"STDOUT log for {memberId}: \"{stdoutFile}\"");
-							if (writeLog(stderrFile, stderrBuffer))
-								Console.WriteLine($"STDERR log for {memberId}: \"{stderrFile}\"");
-						}
-						catch (Exception ex)
-						{
-							Console.WriteLine($"ERROR: Failed to write log: {ex}");
-						}
 					}
 					catch (Exception ex)
 					{
-						Console.WriteLine($"ERROR: Failed to execute pixivutil2: {ex}");
+						Console.WriteLine($"ERROR: Failed to execute PixivUtil2: {ex}");
 					}
 				});
 			}
@@ -171,52 +137,35 @@ namespace ParallelPixivUtil2
 			return 0;
 		}
 
-		private static bool writeLog(string path, StringBuilder sb)
-		{
-			if (sb.Length > 0)
-			{
-				var stream = new StreamWriter(path, UTF_8_WITHOUT_BOM, LOG_FILE_STREAM_OPTIONS);
-				stream.Write(sb.ToString());
-				stream.Close();
+		//private static void writeMemberConfigs(string[] memberIds, string[] cfgLines) => Parallel.ForEach(memberIds, memberId =>
+		//{
+		//	var file = $"config\\{memberId}.ini";
+		//	if (File.Exists(file))
+		//		Console.WriteLine($"Config file already exists for {memberId}");
+		//	else
+		//	{
+		//		Console.WriteLine($"Creating member-specific config for {memberId}");
 
-				return true;
-			}
+		//		int lineCount = cfgLines.Length;
+		//		string[] newListLines = new string[lineCount];
+		//		for (int i = 0; i < lineCount; i++)
+		//		{
+		//			string line = cfgLines[i];
+		//			string modifiedLine;
+		//			if (line.StartsWith("dbPath"))
+		//			{
+		//				int eqindex = line.IndexOf('=');
+		//				if (eqindex + 1 < line.Length && char.IsWhiteSpace(line[eqindex + 1]))
+		//					eqindex++;
+		//				modifiedLine = $"{line[..(eqindex + 1)]}.\\databases\\{memberId}.sqlite";
+		//			}
+		//			else
+		//				modifiedLine = line;
+		//			newListLines[i] = modifiedLine;
+		//		}
 
-			return false;
-		}
-
-		private static DataReceivedEventHandler getBufferRedirectHandler(StringBuilder buffer, bool alsoConsole) => new((_, param) =>
-		{
-			string? data = param.Data;
-			if (!string.IsNullOrEmpty(data) && !data.StartsWith('['))
-			{
-				StringComparison strCmpOpts = StringComparison.InvariantCultureIgnoreCase;
-				if (data.StartsWith("Start downloading...", strCmpOpts))
-				{
-					data = data.Replace("?", "");
-					int indexOfCompleted = data.LastIndexOf("Completed in", strCmpOpts);
-					if (indexOfCompleted > 0 && !data.Contains("Creating directory", strCmpOpts))
-						data = data[..21 /* "Start downloading... ".Length */] + data[indexOfCompleted..];
-					else
-						data = data[..20 /* "Start downloading...".Length */];
-				}
-				else if (data.StartsWith('?') && data.Contains("iB", strCmpOpts))
-				{
-					data = data.Replace("?", "");
-					int indexOfCompleted = data.LastIndexOf("Completed in", strCmpOpts);
-					if (indexOfCompleted > 0)
-						data = data[indexOfCompleted..];
-					else
-						data = null;
-				}
-
-				if (data != null)
-				{
-					buffer.AppendLine(data);
-					if (alsoConsole)
-						Console.WriteLine(data);
-				}
-			}
-		});
+		//		File.WriteAllLines(file, newListLines);
+		//	}
+		//});
 	}
 }
