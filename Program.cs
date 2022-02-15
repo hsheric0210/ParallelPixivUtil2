@@ -103,15 +103,16 @@ namespace ParallelPixivUtil2
 
 				Console.WriteLine("Start downloading");
 
-				
-				Parallel.ForEach(memberPageList, new ParallelOptions { MaxDegreeOfParallelism = parallellism }, (member, _, _) =>
+				TaskScheduler scheduler = new LimitedConcurrencyLevelTaskScheduler(parallellism);
+				int startIndex = memberPageList.Count;
+				int finishIndex = memberPageList.Count;
+				Parallel.ForEach(memberPageList, new ParallelOptions { TaskScheduler = scheduler }, (member, _, _) =>
 				{
-					long memberId = member.Item1;
-					int page = member.Item2;
-					int fileIndex = member.Item3;
+					(long memberId, int page, int fileIndex) = member;
 
 					DateTime now = DateTime.Now;
-					Console.WriteLine($"Executing PixivUtil2 for {memberId}, page(new to old) {page}, page(old to new) {fileIndex}");
+					Interlocked.Decrement(ref startIndex);
+					Console.WriteLine($"Executing PixivUtil2 for [member={memberId}, page(new-to-old)={page}, page(old-to-new)={fileIndex}] in thread {Environment.CurrentManagedThreadId}, {startIndex} operations are remain");
 
 					try
 					{
@@ -122,6 +123,8 @@ namespace ParallelPixivUtil2
 						pixivutil2.StartInfo.UseShellExecute = true;
 						pixivutil2.Start();
 						pixivutil2.WaitForExit();
+						Interlocked.Decrement(ref finishIndex);
+						Console.WriteLine($"Operation finished for [member={memberId}, page(new-to-old)={page}, page(old-to-new)={fileIndex}] in thread {Environment.CurrentManagedThreadId}, waiting for {finishIndex} remaining operations");
 					}
 					catch (Exception ex)
 					{
