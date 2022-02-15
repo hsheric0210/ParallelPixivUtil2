@@ -10,10 +10,15 @@
     <Description>Run PixivUtil2 in parallel!</Description>
     <PackageId>ParallelPixivUtil2</PackageId>
     <Product>Parallel PixivUtil2</Product>
+    <ApplicationIcon>icon2.ico</ApplicationIcon>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <Optimize>False</Optimize>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="icon2.ico" />
+  </ItemGroup>
 
 </Project>
