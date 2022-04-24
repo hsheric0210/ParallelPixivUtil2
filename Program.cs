@@ -31,7 +31,7 @@ namespace ParallelPixivUtil2
 			Console.WriteLine($"DEBUG: Current console encoding is '{Console.OutputEncoding.EncodingName}'");
 
 			var py = File.Exists("pixivutil2.py");
-			if (!py && requireExists("PixivUtil2.exe") || requireExists("list.txt") || requireExists("config.ini"))
+			if (!py && requireExists("PixivUtil2.exe") || requireExists("list.txt") || requireExists("config.ini") || requireExists("aria2c.exe"))
 				return 1;
 
 			if (!File.Exists("parallel.ini"))
@@ -55,7 +55,9 @@ namespace ParallelPixivUtil2
 
 				createDirectoryIfNotExists("databases");
 				createDirectoryIfNotExists("logs");
-				
+				createDirectoryIfNotExists("aria2");
+				createDirectoryIfNotExists("aria2-logs");
+
 				// Dump member informations
 				try
 				{
@@ -98,33 +100,96 @@ namespace ParallelPixivUtil2
 				}
 
 				var ini = new IniFile("parallel.ini");
-				if (!int.TryParse(ini.read("maxParallellism"), out int parallellism))
-					parallellism = 5;
+				if (!int.TryParse(ini.read("maxPixivUtil2Parallellism"), out int pixivutil2Parallellism) && !int.TryParse(ini.read("maxParallellism"), out pixivutil2Parallellism))
+					pixivutil2Parallellism = 5;
 
-				Console.WriteLine("Start downloading");
+				if (!int.TryParse(ini.read("maxAria2Parallellism"), out int aria2Parallellism) && !int.TryParse(ini.read("maxParallellism"), out pixivutil2Parallellism))
+					aria2Parallellism = 5;
 
-				TaskScheduler scheduler = new LimitedConcurrencyLevelTaskScheduler(parallellism);
+				Console.WriteLine("Start creating aria2 input list");
+
+				TaskScheduler pixivutil2Scheduler = new LimitedConcurrencyLevelTaskScheduler(pixivutil2Parallellism);
+				TaskScheduler aria2Scheduler = new LimitedConcurrencyLevelTaskScheduler(aria2Parallellism);
+
 				int startIndex = memberPageList.Count;
 				int finishIndex = memberPageList.Count;
-				Parallel.ForEach(memberPageList, new ParallelOptions { TaskScheduler = scheduler }, (member, _, _) =>
+				Parallel.ForEach(memberPageList, new ParallelOptions { TaskScheduler = pixivutil2Scheduler }, (member, _, _) =>
 				{
 					(long memberId, int page, int fileIndex) = member;
 
-					DateTime now = DateTime.Now;
 					Interlocked.Decrement(ref startIndex);
-					Console.WriteLine($"Executing PixivUtil2 for [member={memberId}, page(new-to-old)={page}, page(old-to-new)={fileIndex}] in thread {Environment.CurrentManagedThreadId}, {startIndex} operations are remain");
+					Console.WriteLine($"Executing PixivUtil2: '{memberId}.p{fileIndex}' (page {page}); {startIndex} operations are remain");
 
 					try
 					{
 						var pixivutil2 = new Process();
 						pixivutil2.StartInfo.FileName = py ? "python.exe" : "PixivUtil2.exe";
 						pixivutil2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
-						pixivutil2.StartInfo.Arguments = $"{(py ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page} --ep={page} -x --db=\"databases\\{memberId}.p{fileIndex}.db\" -l \"logs\\{memberId}.p{fileIndex}.log\"";
+						pixivutil2.StartInfo.Arguments = $"{(py ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page} --ep={page} -x --db=\"databases\\{memberId}.p{fileIndex}.db\" -l \"logs\\{memberId}.p{fileIndex}.log\" --aria2=\"aria2\\{memberId}.p{fileIndex}.txt\"";
 						pixivutil2.StartInfo.UseShellExecute = true;
 						pixivutil2.Start();
 						pixivutil2.WaitForExit();
 						Interlocked.Decrement(ref finishIndex);
-						Console.WriteLine($"Operation finished for [member={memberId}, page(new-to-old)={page}, page(old-to-new)={fileIndex}] in thread {Environment.CurrentManagedThreadId}, waiting for {finishIndex} remaining operations");
+						Console.WriteLine($"Operation finished: '{memberId}.p{fileIndex}' (page {page}); waiting for {finishIndex} remaining operations");
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine($"ERROR: Failed to execute PixivUtil2: {ex}");
+					}
+				});
+
+				Console.WriteLine("Start downloading");
+
+				startIndex = memberPageList.Count;
+				finishIndex = memberPageList.Count;
+				Parallel.ForEach(memberPageList, new ParallelOptions { TaskScheduler = aria2Scheduler }, (member, _, _) =>
+				{
+					(long memberId, int page, int fileIndex) = member;
+
+					DateTime now = DateTime.Now;
+					Interlocked.Decrement(ref startIndex);
+					Console.WriteLine($"Executing Aria2: '{memberId}.p{fileIndex}'; {startIndex} operations are remain");
+
+					try
+					{
+						var aria2 = new Process();
+						aria2.StartInfo.FileName = "aria2c.exe";
+						aria2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
+						aria2.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{fileIndex}.txt\" --allow-overwrite true --auto-file-renaming false --auto-save-interval=5 --max-concurrent-downloads=16 --max-connection-per-server=2 -l \"aria2-logs\\{memberId}.p{fileIndex}.log\"";
+						aria2.StartInfo.UseShellExecute = true;
+						aria2.Start();
+						aria2.WaitForExit();
+						Interlocked.Decrement(ref finishIndex);
+						Console.WriteLine($"Operation finished: '{memberId}.p{fileIndex}'; waiting for {finishIndex} remaining operations");
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine($"ERROR: Failed to execute PixivUtil2: {ex}");
+					}
+				});
+
+				Console.WriteLine("Start post-processing");
+
+				startIndex = memberPageList.Count;
+				finishIndex = memberPageList.Count;
+				Parallel.ForEach(memberPageList, new ParallelOptions { TaskScheduler = pixivutil2Scheduler }, (member, _, _) =>
+				{
+					(long memberId, int page, int fileIndex) = member;
+
+					Interlocked.Decrement(ref startIndex);
+					Console.WriteLine($"Executing PixivUtil2: '{memberId}.p{fileIndex}' (page {page}); {startIndex} operations are remain");
+
+					try
+					{
+						var pixivutil2 = new Process();
+						pixivutil2.StartInfo.FileName = py ? "python.exe" : "PixivUtil2.exe";
+						pixivutil2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
+						pixivutil2.StartInfo.Arguments = $"{(py ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page} --ep={page} -x --db=\"databases\\{memberId}.p{fileIndex}.db\" -l \"logs\\{memberId}.p{fileIndex}.pp.log\"";
+						pixivutil2.StartInfo.UseShellExecute = true;
+						pixivutil2.Start();
+						pixivutil2.WaitForExit();
+						Interlocked.Decrement(ref finishIndex);
+						Console.WriteLine($"Operation finished: '{memberId}.p{fileIndex}' (page {page}); waiting for {finishIndex} remaining operations");
 					}
 					catch (Exception ex)
 					{
@@ -139,36 +204,5 @@ namespace ParallelPixivUtil2
 
 			return 0;
 		}
-
-		//private static void writeMemberConfigs(string[] memberIds, string[] cfgLines) => Parallel.ForEach(memberIds, memberId =>
-		//{
-		//	var file = $"config\\{memberId}.ini";
-		//	if (File.Exists(file))
-		//		Console.WriteLine($"Config file already exists for {memberId}");
-		//	else
-		//	{
-		//		Console.WriteLine($"Creating member-specific config for {memberId}");
-
-		//		int lineCount = cfgLines.Length;
-		//		string[] newListLines = new string[lineCount];
-		//		for (int i = 0; i < lineCount; i++)
-		//		{
-		//			string line = cfgLines[i];
-		//			string modifiedLine;
-		//			if (line.StartsWith("dbPath"))
-		//			{
-		//				int eqindex = line.IndexOf('=');
-		//				if (eqindex + 1 < line.Length && char.IsWhiteSpace(line[eqindex + 1]))
-		//					eqindex++;
-		//				modifiedLine = $"{line[..(eqindex + 1)]}.\\databases\\{memberId}.sqlite";
-		//			}
-		//			else
-		//				modifiedLine = line;
-		//			newListLines[i] = modifiedLine;
-		//		}
-
-		//		File.WriteAllLines(file, newListLines);
-		//	}
-		//});
 	}
 }
