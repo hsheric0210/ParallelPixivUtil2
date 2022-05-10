@@ -1,11 +1,10 @@
 ﻿using System.Diagnostics;
-using System.Text;
 
 namespace ParallelPixivUtil2
 {
 	public class Program
 	{
-		private static bool requireExists(string fileName)
+		private static bool RequireExists(string fileName)
 		{
 			if (!File.Exists(fileName))
 			{
@@ -15,7 +14,7 @@ namespace ParallelPixivUtil2
 			return false;
 		}
 
-		private static void createDirectoryIfNotExists(string dirName)
+		private static void CreateDirectoryIfNotExists(string dirName)
 		{
 			if (!Directory.Exists(dirName))
 			{
@@ -31,13 +30,15 @@ namespace ParallelPixivUtil2
 			Console.WriteLine($"DEBUG: Current console encoding is '{Console.OutputEncoding.EncodingName}'");
 
 			var py = File.Exists("pixivutil2.py");
-			if (!py && requireExists("PixivUtil2.exe") || requireExists("list.txt") || requireExists("config.ini") || requireExists("aria2c.exe"))
+			if (!py && RequireExists("PixivUtil2.exe") || RequireExists("list.txt") || RequireExists("config.ini") || RequireExists("aria2c.exe"))
 				return 1;
 
 			if (!File.Exists("parallel.ini"))
 			{
 				var ini = new IniFile("parallel.ini");
-				ini.write("maxParallellism", "5");
+				ini.Write("MaxPixivUtil2Parallellism", "5");
+				ini.Write("MaxAria2Parallellism", "5");
+				ini.Write("Aria2Parameters", "--allow-overwrite=true --conditional-get=true --remote-time=true --auto-file-renaming=false --auto-save-interval=10 -j16 -x2");
 			}
 
 			try
@@ -45,18 +46,10 @@ namespace ParallelPixivUtil2
 				Console.WriteLine("Reading all lines of list.txt");
 				string[] memberIds = File.ReadAllLines("list.txt");
 
-				//Console.WriteLine("Reading all lines of config.ini");
-				//string[] cfgLines = File.ReadAllLines("config.ini");
-
-				//createDirectoryIfNotExists("config");
-
-				//Console.WriteLine("Writing member-specific config files (in parallel)");
-				//writeMemberConfigs(memberIds, cfgLines);
-
-				createDirectoryIfNotExists("databases");
-				createDirectoryIfNotExists("logs");
-				createDirectoryIfNotExists("aria2");
-				createDirectoryIfNotExists("aria2-logs");
+				CreateDirectoryIfNotExists("databases");
+				CreateDirectoryIfNotExists("logs");
+				CreateDirectoryIfNotExists("aria2");
+				CreateDirectoryIfNotExists("aria2-logs");
 
 				// Dump member informations
 				try
@@ -100,11 +93,13 @@ namespace ParallelPixivUtil2
 				}
 
 				var ini = new IniFile("parallel.ini");
-				if (!int.TryParse(ini.read("maxPixivUtil2Parallellism"), out int pixivutil2Parallellism) && !int.TryParse(ini.read("maxParallellism"), out pixivutil2Parallellism))
+				if (!int.TryParse(ini.Read("MaxPixivUtil2Parallellism"), out int pixivutil2Parallellism) && !int.TryParse(ini.Read("MaxParallellism"), out pixivutil2Parallellism))
 					pixivutil2Parallellism = 5;
 
-				if (!int.TryParse(ini.read("maxAria2Parallellism"), out int aria2Parallellism) && !int.TryParse(ini.read("maxParallellism"), out pixivutil2Parallellism))
+				if (!int.TryParse(ini.Read("MaxAria2Parallellism"), out int aria2Parallellism) && !int.TryParse(ini.Read("MaxParallellism"), out pixivutil2Parallellism))
 					aria2Parallellism = 5;
+
+				var aria2Parameters = ini.Read("Aria2Parameters");
 
 				Console.WriteLine("Start creating aria2 input list");
 
@@ -146,7 +141,6 @@ namespace ParallelPixivUtil2
 				{
 					(long memberId, int page, int fileIndex) = member;
 
-					DateTime now = DateTime.Now;
 					Interlocked.Decrement(ref startIndex);
 					Console.WriteLine($"Executing Aria2: '{memberId}.p{fileIndex}'; {startIndex} operations are remain");
 
@@ -155,7 +149,7 @@ namespace ParallelPixivUtil2
 						var aria2 = new Process();
 						aria2.StartInfo.FileName = "aria2c.exe";
 						aria2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
-						aria2.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{fileIndex}.txt\" --allow-overwrite true --auto-file-renaming false --auto-save-interval=5 --max-concurrent-downloads=16 --max-connection-per-server=2 -l \"aria2-logs\\{memberId}.p{fileIndex}.log\"";
+						aria2.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{fileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{fileIndex}.log\" {aria2Parameters}";
 						aria2.StartInfo.UseShellExecute = true;
 						aria2.Start();
 						aria2.WaitForExit();
