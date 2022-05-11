@@ -25,14 +25,14 @@ namespace ParallelPixivUtil2
 		public string Read(string Key, string? Section = null)
 		{
 			var RetVal = new StringBuilder(255);
-			GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 255, Path);
+			_ = GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 255, Path);
 			int lastError = GetLastError();
 			if (lastError != 0)
 				throw new AggregateException($"Failed to get value from configuration: Key={Key}, Section={Section ?? "null"}, Error=0x{lastError:X8}");
 			return RetVal.ToString().Trim();
 		}
 
-		public void Write(string? Key, string? Value, string? Section = null) => WritePrivateProfileString(Section ?? EXE, Key, Value?.Trim(), Path);
+		public void Write(string? Key, object? Value, string? Section = null) => WritePrivateProfileString(Section ?? EXE, Key, Value?.ToString()?.Trim(), Path);
 
 		public void DeleteKey(string Key, string? Section = null) => Write(Key, null, Section ?? EXE);
 

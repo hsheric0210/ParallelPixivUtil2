@@ -1,9 +1,17 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Linq;
 
 namespace ParallelPixivUtil2
 {
-	public class Program
+	public sealed class Program
 	{
+		private const string MemberDataListFileName = "memberdata.txt";
+
+		private Program()
+		{
+		}
+
 		private static bool RequireExists(string fileName)
 		{
 			if (!File.Exists(fileName))
@@ -23,23 +31,13 @@ namespace ParallelPixivUtil2
 			}
 		}
 
-		public static int Main(string[] args)
+		public static async Task<int> Main(string[] _)
 		{
 			Console.WriteLine("ParallelPixivUtil2 - PixivUtil2 with parallel download support");
 
-			Console.WriteLine($"DEBUG: Current console encoding is '{Console.OutputEncoding.EncodingName}'");
-
-			var py = File.Exists("pixivutil2.py");
-			if (!py && RequireExists("PixivUtil2.exe") || RequireExists("list.txt") || RequireExists("config.ini") || RequireExists("aria2c.exe"))
+			var pythonSourceFileExists = File.Exists("pixivutil2.py");
+			if (!pythonSourceFileExists && RequireExists("PixivUtil2.exe") || RequireExists("list.txt") || RequireExists("config.ini") || RequireExists("aria2c.exe"))
 				return 1;
-
-			if (!File.Exists("parallel.ini"))
-			{
-				var ini = new IniFile("parallel.ini");
-				ini.Write("MaxPixivUtil2Parallellism", "5");
-				ini.Write("MaxAria2Parallellism", "5");
-				ini.Write("Aria2Parameters", "--allow-overwrite=true --conditional-get=true --remote-time=true --auto-file-renaming=false --auto-save-interval=10 -j16 -x2");
-			}
 
 			try
 			{
@@ -51,145 +49,33 @@ namespace ParallelPixivUtil2
 				CreateDirectoryIfNotExists("aria2");
 				CreateDirectoryIfNotExists("aria2-logs");
 
-				// Dump member informations
-				try
+				var config = new Config();
+
+				// Extract URLs
+				ExtractMemberDataList(pythonSourceFileExists, memberIds);
+
+				if (!File.Exists(MemberDataListFileName))
+					Console.WriteLine("ERROR: Failed to dump member informations (Dump file not found)");
+
+				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(out int totalCount);
+
+				Console.WriteLine("Extracting member images");
+				using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
 				{
-					var pixivutil2 = new Process();
-					pixivutil2.StartInfo.FileName = py ? "Python.exe" : "PixivUtil2.exe";
-					pixivutil2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
-					pixivutil2.StartInfo.Arguments = $"{(py ? "PixivUtil2.py" : "")} -s q memberdata.txt {string.Join(' ', memberIds)} -x -l \"logs\\dumpMembers.log\"";
-					pixivutil2.StartInfo.UseShellExecute = true;
-					pixivutil2.Start();
-					pixivutil2.WaitForExit();
+					await ExtractMemberImages(totalCount, memberPageList, semaphore, pythonSourceFileExists);
 				}
-				catch (Exception ex)
-				{
-					Console.WriteLine($"ERROR: Failed to execute PixivUtil2: {ex}");
-				}
-
-				if (!File.Exists("memberdata.txt"))
-					Console.WriteLine($"ERROR: Failed to dump member informations (Dump file not found)");
-
-				var memberPageList = new List<(long, int, int)>();
-
-				foreach (string line in File.ReadAllLines("memberdata.txt"))
-				{
-					if (string.IsNullOrWhiteSpace(line))
-						continue;
-
-					string[] pieces = line.Split(',');
-					if (!long.TryParse(pieces[0], out long memberId) || !int.TryParse(pieces[1], out int totalImages))
-						continue;
-
-					if (totalImages > 0)
-					{
-						int maxImagesPerPage = 48;
-						int pageCount = (totalImages - totalImages % maxImagesPerPage) / maxImagesPerPage + 1;
-						for (int i = 1; i <= pageCount; i++)
-							memberPageList.Add((memberId, i, pageCount - i + 1));
-					}
-					else
-						Console.WriteLine($"Member {memberId} doesn't have any images! Skipping");
-				}
-
-				var ini = new IniFile("parallel.ini");
-				if (!int.TryParse(ini.Read("MaxPixivUtil2Parallellism"), out int pixivutil2Parallellism) && !int.TryParse(ini.Read("MaxParallellism"), out pixivutil2Parallellism))
-					pixivutil2Parallellism = 5;
-
-				if (!int.TryParse(ini.Read("MaxAria2Parallellism"), out int aria2Parallellism) && !int.TryParse(ini.Read("MaxParallellism"), out pixivutil2Parallellism))
-					aria2Parallellism = 5;
-
-				var aria2Parameters = ini.Read("Aria2Parameters");
-
-				Console.WriteLine("Start creating aria2 input list");
-
-				TaskScheduler pixivutil2Scheduler = new LimitedConcurrencyLevelTaskScheduler(pixivutil2Parallellism);
-				TaskScheduler aria2Scheduler = new LimitedConcurrencyLevelTaskScheduler(aria2Parallellism);
-
-				int startIndex = memberPageList.Count;
-				int finishIndex = memberPageList.Count;
-				Parallel.ForEach(memberPageList, new ParallelOptions { TaskScheduler = pixivutil2Scheduler }, (member, _, _) =>
-				{
-					(long memberId, int page, int fileIndex) = member;
-
-					Interlocked.Decrement(ref startIndex);
-					Console.WriteLine($"Executing PixivUtil2: '{memberId}.p{fileIndex}' (page {page}); {startIndex} operations are remain");
-
-					try
-					{
-						var pixivutil2 = new Process();
-						pixivutil2.StartInfo.FileName = py ? "python.exe" : "PixivUtil2.exe";
-						pixivutil2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
-						pixivutil2.StartInfo.Arguments = $"{(py ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page} --ep={page} -x --db=\"databases\\{memberId}.p{fileIndex}.db\" -l \"logs\\{memberId}.p{fileIndex}.log\" --aria2=\"aria2\\{memberId}.p{fileIndex}.txt\"";
-						pixivutil2.StartInfo.UseShellExecute = true;
-						pixivutil2.Start();
-						pixivutil2.WaitForExit();
-						Interlocked.Decrement(ref finishIndex);
-						Console.WriteLine($"Operation finished: '{memberId}.p{fileIndex}' (page {page}); waiting for {finishIndex} remaining operations");
-					}
-					catch (Exception ex)
-					{
-						Console.WriteLine($"ERROR: Failed to execute PixivUtil2: {ex}");
-					}
-				});
 
 				Console.WriteLine("Start downloading");
-
-				startIndex = memberPageList.Count;
-				finishIndex = memberPageList.Count;
-				Parallel.ForEach(memberPageList, new ParallelOptions { TaskScheduler = aria2Scheduler }, (member, _, _) =>
+				using (var semaphore = new SemaphoreSlim(config.MaxDownloaderParallellism))
 				{
-					(long memberId, int page, int fileIndex) = member;
-
-					Interlocked.Decrement(ref startIndex);
-					Console.WriteLine($"Executing Aria2: '{memberId}.p{fileIndex}'; {startIndex} operations are remain");
-
-					try
-					{
-						var aria2 = new Process();
-						aria2.StartInfo.FileName = "aria2c.exe";
-						aria2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
-						aria2.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{fileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{fileIndex}.log\" {aria2Parameters}";
-						aria2.StartInfo.UseShellExecute = true;
-						aria2.Start();
-						aria2.WaitForExit();
-						Interlocked.Decrement(ref finishIndex);
-						Console.WriteLine($"Operation finished: '{memberId}.p{fileIndex}'; waiting for {finishIndex} remaining operations");
-					}
-					catch (Exception ex)
-					{
-						Console.WriteLine($"ERROR: Failed to execute PixivUtil2: {ex}");
-					}
-				});
+					await DownloadImages(totalCount, memberPageList, semaphore, config.DownloaderParameters);
+				}
 
 				Console.WriteLine("Start post-processing");
-
-				startIndex = memberPageList.Count;
-				finishIndex = memberPageList.Count;
-				Parallel.ForEach(memberPageList, new ParallelOptions { TaskScheduler = pixivutil2Scheduler }, (member, _, _) =>
+				using (var semaphore = new SemaphoreSlim(config.MaxPostprocessorParallellism))
 				{
-					(long memberId, int page, int fileIndex) = member;
-
-					Interlocked.Decrement(ref startIndex);
-					Console.WriteLine($"Executing PixivUtil2: '{memberId}.p{fileIndex}' (page {page}); {startIndex} operations are remain");
-
-					try
-					{
-						var pixivutil2 = new Process();
-						pixivutil2.StartInfo.FileName = py ? "python.exe" : "PixivUtil2.exe";
-						pixivutil2.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
-						pixivutil2.StartInfo.Arguments = $"{(py ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page} --ep={page} -x --db=\"databases\\{memberId}.p{fileIndex}.db\" -l \"logs\\{memberId}.p{fileIndex}.pp.log\"";
-						pixivutil2.StartInfo.UseShellExecute = true;
-						pixivutil2.Start();
-						pixivutil2.WaitForExit();
-						Interlocked.Decrement(ref finishIndex);
-						Console.WriteLine($"Operation finished: '{memberId}.p{fileIndex}' (page {page}); waiting for {finishIndex} remaining operations");
-					}
-					catch (Exception ex)
-					{
-						Console.WriteLine($"ERROR: Failed to execute PixivUtil2: {ex}");
-					}
-				});
+					await Postprocess(totalCount, memberPageList, semaphore, pythonSourceFileExists);
+				}
 			}
 			catch (Exception ex)
 			{
@@ -198,5 +84,165 @@ namespace ParallelPixivUtil2
 
 			return 0;
 		}
+
+		private static async Task Postprocess(int totalPageCount, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
+		{
+			int remaining = totalPageCount;
+			var tasks = new List<Task>();
+			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
+			{
+				tasks.AddRange(pages.Select(page => Task.Run(async () =>
+				{
+					semaphore.Wait();
+					Console.WriteLine($"Executing post-processor: '{memberId}.p{page.FileIndex}' (page {page.Page})");
+
+					try
+					{
+						var postProcessor = new Process();
+						postProcessor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : "PixivUtil2.exe";
+						postProcessor.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
+						postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
+						postProcessor.StartInfo.UseShellExecute = true;
+						postProcessor.Start();
+						await postProcessor.WaitForExitAsync();
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine($"ERROR: Failed to execute post-processor: {ex}");
+					}
+					finally
+					{
+						semaphore.Release();
+						Console.WriteLine($"Operation finished: '{memberId}.p{page.FileIndex}' (page {page.Page}); waiting for {Interlocked.Decrement(ref remaining)} remaining operations");
+					}
+				})));
+			}
+
+			await Task.WhenAll(tasks);
+		}
+
+		private static async Task DownloadImages(int totalPageCount, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, string parameters)
+		{
+			int remaining = totalPageCount;
+			var tasks = new List<Task>();
+			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
+			{
+				tasks.AddRange(pages.Select(page => Task.Run(async () =>
+				{
+					semaphore.Wait();
+					Console.WriteLine($"Executing downloader: '{memberId}.p{page.FileIndex}'");
+
+					try
+					{
+						var downloader = new Process();
+						downloader.StartInfo.FileName = "aria2c.exe";
+						downloader.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
+						downloader.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{page.FileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{page.FileIndex}.log\" {parameters}";
+						downloader.StartInfo.UseShellExecute = true;
+						downloader.Start();
+						await downloader.WaitForExitAsync();
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine($"ERROR: Failed to execute downloader: {ex}");
+					}
+					finally
+					{
+						semaphore.Release();
+						Console.WriteLine($"Operation finished: '{memberId}.p{page.FileIndex}'; waiting for {Interlocked.Decrement(ref remaining)} remaining operations");
+					}
+				})));
+			}
+			await Task.WhenAll(tasks);
+		}
+
+		private static async Task ExtractMemberImages(int totalPageCount, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
+		{
+			int remaining = totalPageCount;
+			var tasks = new List<Task>();
+			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
+			{
+				tasks.AddRange(pages.Select(page => Task.Run(async () =>
+				{
+					semaphore.Wait();
+					Console.WriteLine($"Executing extractor: '{memberId}.p{page.FileIndex}' (page {page.Page})");
+
+					try
+					{
+						var extractor = new Process();
+						extractor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : "PixivUtil2.exe";
+						extractor.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
+						extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.log\" --aria2=\"aria2\\{memberId}.p{page.FileIndex}.txt\"";
+						extractor.StartInfo.UseShellExecute = true;
+						extractor.Start();
+						await extractor.WaitForExitAsync();
+					}
+					catch (Exception ex)
+					{
+						Console.WriteLine($"ERROR: Failed to execute extractor: {ex}");
+					}
+					finally
+					{
+						semaphore.Release();
+						Console.WriteLine($"Operation finished: '{memberId}.p{page.FileIndex}' (page {page.Page}); waiting for {Interlocked.Decrement(ref remaining)} remaining operations");
+					}
+				})));
+			}
+
+			await Task.WhenAll(tasks);
+		}
+
+		private static IDictionary<long, ICollection<MemberPage>> ParseMemberDataList(out int totalCount)
+		{
+			var memberPageList = new Dictionary<long, ICollection<MemberPage>>();
+			totalCount = 0;
+			foreach (string line in File.ReadAllLines(MemberDataListFileName))
+			{
+				if (string.IsNullOrWhiteSpace(line))
+					continue;
+
+				string[] pieces = line.Split(',');
+				if (!long.TryParse(pieces[0], out long memberId) || !int.TryParse(pieces[1], out int totalImages))
+					continue;
+
+				if (totalImages > 0)
+				{
+					if (!memberPageList.ContainsKey(memberId))
+						memberPageList[memberId] = new List<MemberPage>();
+
+					const int maxImagesPerPage = 48;
+					int pageCount = (totalImages - totalImages % maxImagesPerPage) / maxImagesPerPage + 1;
+					for (int i = 1; i <= pageCount; i++)
+						memberPageList[memberId].Add(new MemberPage(i, pageCount - i + 1));
+					totalCount += pageCount;
+				}
+				else
+				{
+					Console.WriteLine($"Member {memberId} doesn't have any images! Skipping");
+				}
+			}
+
+			return memberPageList;
+		}
+
+		private static void ExtractMemberDataList(bool pythonSourceFileExists, string[] memberIds)
+		{
+			try
+			{
+				var extractor = new Process();
+				extractor.StartInfo.FileName = pythonSourceFileExists ? "Python.exe" : "PixivUtil2.exe";
+				extractor.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
+				extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? "PixivUtil2.py" : "")} -s q {MemberDataListFileName} {string.Join(' ', memberIds)} -x -l \"logs\\dumpMembers.log\"";
+				extractor.StartInfo.UseShellExecute = true;
+				extractor.Start();
+				extractor.WaitForExit();
+			}
+			catch (Exception ex)
+			{
+				Console.WriteLine($"ERROR: Failed to execute PixivUtil2: {ex}");
+			}
+		}
 	}
+
+	public sealed record MemberPage(int Page, int FileIndex);
 }
