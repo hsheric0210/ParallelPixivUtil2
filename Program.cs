@@ -59,6 +59,12 @@ namespace ParallelPixivUtil2
 
 				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(out int totalCount);
 
+				int workerCount = Math.Max(config.MaxExtractorParallellism, Math.Max(config.MaxDownloaderParallellism, config.MaxPostprocessorParallellism));
+				if (!ThreadPool.SetMinThreads(workerCount, workerCount))
+					Console.WriteLine("WARN: Failed to set min thread pool workers");
+				if (!ThreadPool.SetMaxThreads(workerCount, workerCount))
+					Console.WriteLine("WARN: Failed to set max thread pool workers");
+
 				Console.WriteLine("Extracting member images");
 				using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
 				{
@@ -91,7 +97,7 @@ namespace ParallelPixivUtil2
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
-				tasks.AddRange(pages.Select(page => Task.Run(async () =>
+				tasks.AddRange(pages.Select(page => Task.Run(() =>
 				{
 					semaphore.Wait();
 					Console.WriteLine($"Executing post-processor: '{memberId}.p{page.FileIndex}' (page {page.Page})");
@@ -103,8 +109,9 @@ namespace ParallelPixivUtil2
 						postProcessor.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
 						postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
 						postProcessor.StartInfo.UseShellExecute = true;
+						postProcessor.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
 						postProcessor.Start();
-						await postProcessor.WaitForExitAsync();
+						postProcessor.WaitForExit();
 					}
 					catch (Exception ex)
 					{
@@ -127,7 +134,7 @@ namespace ParallelPixivUtil2
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
-				tasks.AddRange(pages.Select(page => Task.Run(async () =>
+				tasks.AddRange(pages.Select(page => Task.Run(() =>
 				{
 					semaphore.Wait();
 					Console.WriteLine($"Executing downloader: '{memberId}.p{page.FileIndex}'");
@@ -139,8 +146,9 @@ namespace ParallelPixivUtil2
 						downloader.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
 						downloader.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{page.FileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{page.FileIndex}.log\" {parameters}";
 						downloader.StartInfo.UseShellExecute = true;
+						downloader.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
 						downloader.Start();
-						await downloader.WaitForExitAsync();
+						downloader.WaitForExit();
 					}
 					catch (Exception ex)
 					{
@@ -162,7 +170,7 @@ namespace ParallelPixivUtil2
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
-				tasks.AddRange(pages.Select(page => Task.Run(async () =>
+				tasks.AddRange(pages.Select(page => Task.Run(() =>
 				{
 					semaphore.Wait();
 					Console.WriteLine($"Executing extractor: '{memberId}.p{page.FileIndex}' (page {page.Page})");
@@ -174,8 +182,9 @@ namespace ParallelPixivUtil2
 						extractor.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
 						extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? "PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.log\" --aria2=\"aria2\\{memberId}.p{page.FileIndex}.txt\"";
 						extractor.StartInfo.UseShellExecute = true;
+						extractor.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
 						extractor.Start();
-						await extractor.WaitForExitAsync();
+						extractor.WaitForExit();
 					}
 					catch (Exception ex)
 					{
@@ -234,6 +243,7 @@ namespace ParallelPixivUtil2
 				extractor.StartInfo.WorkingDirectory = Directory.GetCurrentDirectory();
 				extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? "PixivUtil2.py" : "")} -s q {MemberDataListFileName} {string.Join(' ', memberIds)} -x -l \"logs\\dumpMembers.log\"";
 				extractor.StartInfo.UseShellExecute = true;
+				extractor.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
 				extractor.Start();
 				extractor.WaitForExit();
 			}
