@@ -31,9 +31,11 @@ namespace ParallelPixivUtil2
 			}
 		}
 
-		public static async Task<int> Main(string[] _)
+		public static async Task<int> Main(string[] args)
 		{
 			Console.WriteLine("ParallelPixivUtil2 - PixivUtil2 with parallel download support");
+
+			bool onlyPostProcessing = args.Length > 0 && args[0].Equals("onlypp", StringComparison.InvariantCultureIgnoreCase);
 
 			var pythonSourceFileExists = File.Exists("pixivutil2.py");
 			if (!pythonSourceFileExists && RequireExists("PixivUtil2.exe") || RequireExists("list.txt") || RequireExists("config.ini") || RequireExists("aria2c.exe"))
@@ -65,16 +67,19 @@ namespace ParallelPixivUtil2
 				if (!ThreadPool.SetMaxThreads(workerCount, workerCount))
 					Console.WriteLine("WARN: Failed to set max thread pool workers");
 
-				Console.WriteLine("Extracting member images");
-				using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
+				if (!onlyPostProcessing)
 				{
-					await ExtractMemberImages(totalCount, memberPageList, semaphore, pythonSourceFileExists);
-				}
+					Console.WriteLine("Extracting member images");
+					using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
+					{
+						await ExtractMemberImages(totalCount, memberPageList, semaphore, pythonSourceFileExists);
+					}
 
-				Console.WriteLine("Start downloading");
-				using (var semaphore = new SemaphoreSlim(config.MaxDownloaderParallellism))
-				{
-					await DownloadImages(totalCount, memberPageList, semaphore, config.DownloaderParameters);
+					Console.WriteLine("Start downloading");
+					using (var semaphore = new SemaphoreSlim(config.MaxDownloaderParallellism))
+					{
+						await DownloadImages(totalCount, memberPageList, semaphore, config.DownloaderParameters);
+					}
 				}
 
 				Console.WriteLine("Start post-processing");
