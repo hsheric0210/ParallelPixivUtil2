@@ -53,10 +53,10 @@ namespace ParallelPixivUtil2
 		{
 			if (disposing)
 			{
-				Socket.Dispose();
-
 				Poller.Stop();
 				Poller.Dispose();
+
+				Socket.Dispose();
 			}
 		}
 	}
