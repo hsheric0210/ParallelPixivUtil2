@@ -128,11 +128,11 @@ namespace ParallelPixivUtil2
 				switch (group)
 				{
 					case "HS":
-						PostprocessorLogger.InfoFormat("IPC Handshake received from {0} - '{1}'", uidString, message[0].ConvertToString());
+						PostprocessorLogger.InfoFormat("IPC Handshake received from {0} - '{1}'", uidString, message[0].ConvertToStringUTF8());
 						socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
 						break;
 					case "FFMPEG":
-						PostprocessorLogger.InfoFormat("IPC FFmpeg execution request received from {0} - '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToString())));
+						PostprocessorLogger.InfoFormat("IPC FFmpeg execution request received from {0} - '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
 						Task.Run(() =>
 						{
 							ffmpegMutex.WaitOne();
@@ -145,7 +145,7 @@ namespace ParallelPixivUtil2
 								ffmpeg.StartInfo.WorkingDirectory = workingDir;
 								ffmpeg.StartInfo.UseShellExecute = true;
 								foreach (NetMQFrame arg in message)
-									ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToString());
+									ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToStringUTF8());
 								ffmpeg.Start();
 								ffmpeg.WaitForExit();
 								exitCode = ffmpeg.ExitCode;

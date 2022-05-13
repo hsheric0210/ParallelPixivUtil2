@@ -36,6 +36,8 @@ namespace ParallelPixivUtil2
 			socket.SendMultipartMessage(response);
 		}
 
+		public static string ConvertToStringUTF8(this NetMQFrame frame) => frame.ConvertToString(Encoding.UTF8);
+
 		public static string ToUniqueIDString(this NetMQFrame uidFrame) => string.Concat(uidFrame.ToByteArray().Select(b => Convert.ToString(b, 16).ToUpperInvariant()));
 	}
 
