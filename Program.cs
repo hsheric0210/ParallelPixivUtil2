@@ -176,7 +176,7 @@ namespace ParallelPixivUtil2
 						var postProcessor = new Process();
 						postProcessor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
 						postProcessor.StartInfo.WorkingDirectory = workingDir;
-						postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -u {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={socketAddr} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
+						postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={socketAddr} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
 						postProcessor.StartInfo.UseShellExecute = true;
 						postProcessor.StartInfo.WindowStyle = ProcessWindowStyle.Minimized; // TODO: Disable window, only communicate with IPC
 						postProcessor.Start();
