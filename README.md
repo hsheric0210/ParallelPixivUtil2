@@ -11,6 +11,11 @@ A cheap way to run PixivUtil2 in parallel
 
 * ERROR: Failed to execute pixivutil2
 
+# IPC format
+* Handshake
+  * Receive client handshake (example: Frames { UID, '', "HS", "PU2" }) ('PU2' stands for PixivUtil2)
+  * Send server handshake (example: Frames { UID, '', "HS", Program Name and Version})
+
 # Warning
 I'd recommend you to use alternate pixiv account (secondary account).
 

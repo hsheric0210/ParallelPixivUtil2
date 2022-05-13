@@ -22,13 +22,16 @@ namespace ParallelPixivUtil2
 
 		public IniFile(string? IniPath = null) => Path = new FileInfo(IniPath ?? EXE + ".ini").FullName;
 
-		public string Read(string Key, string? Section = null)
+		public string Read(string Key, string? Section = null, bool silent = false)
 		{
 			var RetVal = new StringBuilder(255);
 			_ = GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 255, Path);
-			int lastError = GetLastError();
-			if (lastError != 0)
-				throw new AggregateException($"Failed to get value from configuration: Key={Key}, Section={Section ?? "null"}, Error=0x{lastError:X8}");
+			if (!silent)
+			{
+				int lastError = GetLastError();
+				if (lastError != 0)
+					throw new AggregateException($"Failed to get value from configuration: Key={Key}, Section={Section ?? "null"}, Error=0x{lastError:X8}");
+			}
 			return RetVal.ToString().Trim();
 		}
 
@@ -38,6 +41,6 @@ namespace ParallelPixivUtil2
 
 		public void DeleteSection(string? Section = null) => Write(null, null, Section ?? EXE);
 
-		public bool KeyExists(string Key, string? Section = null) => Read(Key, Section).Length > 0;
+		public bool KeyExists(string Key, string? Section = null) => Read(Key, Section, silent: true).Length > 0;
 	}
 }

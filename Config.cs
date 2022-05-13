@@ -14,6 +14,12 @@
 		private const string DefaultDownloaderParameters = "--allow-overwrite=true --conditional-get=true --remote-time=true --auto-file-renaming=false --auto-save-interval=10 -j16 -x2";
 		private const string MaxImagesPerPageKey = "MaxImagesPerPage";
 		private const int DefaultMaxImagesPerPage = 48;
+		private const string ExtractorWorkingDirectoryKey = "WorkingDir";
+		private const string DefaultExtractorWorkingDirectory = "";
+		private const string FFmpegLocationKey = "FFmpeg";
+		private const string DefaultFFmpegLocationKey = "FFmpeg.exe";
+		private const string DownloaderLocationKey = "Aria2";
+		private const string DefaultDownloaderLocation = "Aria2c.exe";
 
 		private readonly IniFile Ini;
 
@@ -26,6 +32,12 @@
 		public string DownloaderParameters => ParseString(DownloaderParametersKey, DefaultDownloaderParameters);
 
 		public int MaxImagesPerPage => ParseInt(MaxImagesPerPageKey, DefaultMaxImagesPerPage);
+
+		public string ExtractorWorkingDirectory => ParseString(ExtractorWorkingDirectoryKey, DefaultExtractorWorkingDirectory);
+
+		public string FFmpegLocation => ParseString(FFmpegLocationKey, DefaultFFmpegLocationKey);
+
+		public string DownloaderLocation => ParseString(DownloaderLocationKey, DefaultDownloaderLocation);
 
 		public Config()
 		{
@@ -57,6 +69,9 @@
 			Ini.Write(MaxPostprocessorParallellismKey, DefaultMaxPostprocessorParallellism.ToString());
 			Ini.Write(DownloaderParametersKey, DefaultDownloaderParameters);
 			Ini.Write(MaxImagesPerPageKey, DefaultMaxImagesPerPage.ToString());
+			Ini.Write(ExtractorWorkingDirectoryKey, DefaultExtractorWorkingDirectory);
+			Ini.Write(FFmpegLocationKey, DefaultFFmpegLocationKey);
+			Ini.Write(DownloaderLocationKey, DefaultDownloaderLocation);
 		}
 	}
 }
