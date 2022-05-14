@@ -62,7 +62,7 @@ namespace ParallelPixivUtil2
 
 			try
 			{
-				var ffmpegMutex = new Mutex(false, "FFmpeg mutex");
+				var ffmpegMutex = new Mutex(false, $"{ProgramName}_FFmpegMutex");
 				using IpcConnection socket = IpcExtension.InitializeIPCSocket(IPCSocketAddress, (socket, uidFrame, group, message) =>
 				{
 					string uidString = uidFrame.ToUniqueIDString();
@@ -137,20 +137,20 @@ namespace ParallelPixivUtil2
 				if (!onlyPostProcessing)
 				{
 					MainLogger.Info("Extracting member images.");
-					using (var semaphore = new Semaphore(config.MaxExtractorParallellism, config.MaxExtractorParallellism, "ExtractorParallellism"))
+					using (var semaphore = new Semaphore(config.MaxExtractorParallellism, config.MaxExtractorParallellism, $"{ProgramName}_ExtractorParallellismSemaphore"))
 					{
 						await ExtractMemberImages(totalCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
 					}
 
 					MainLogger.Info("Start downloading.");
-					using (var semaphore = new Semaphore(config.MaxDownloaderParallellism, config.MaxDownloaderParallellism, "DownloaderParallellism"))
+					using (var semaphore = new Semaphore(config.MaxDownloaderParallellism, config.MaxDownloaderParallellism, $"{ProgramName}_DownloaderParallellismSemaphore"))
 					{
 						await DownloadImages(totalCount, workingDirectory, memberPageList, semaphore, config.DownloaderParameters);
 					}
 				}
 
 				MainLogger.Info("Start post-processing.");
-				using (var semaphore = new Semaphore(config.MaxPostprocessorParallellism, config.MaxPostprocessorParallellism, "PostprocessorParallelism"))
+				using (var semaphore = new Semaphore(config.MaxPostprocessorParallellism, config.MaxPostprocessorParallellism, $"{ProgramName}_PostprocessorParallellismSemaphore"))
 				{
 					await Postprocess(totalCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
 				}
