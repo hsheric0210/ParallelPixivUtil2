@@ -4,6 +4,7 @@ using NetMQ;
 using NetMQ.Sockets;
 using log4net;
 using System.Collections.Concurrent;
+using System.Linq;
 
 namespace ParallelPixivUtil2
 {
@@ -58,6 +59,12 @@ namespace ParallelPixivUtil2
 			if (!pythonSourceFileExists && RequireExists($"{workingDirectory}\\PixivUtil2.exe") || RequireExists(ListFileName) || RequireExists($"{workingDirectory}\\config.ini") || RequireExists($"{workingDirectory}\\{config.DownloaderLocation}"))
 				return 1;
 
+			int workerCount = Math.Max(config.MaxExtractorParallellism, Math.Max(config.MaxDownloaderParallellism, config.MaxPostprocessorParallellism)) + 4;
+			if (!ThreadPool.SetMinThreads(workerCount, workerCount))
+				MainLogger.Warn("Failed to set min thread pool workers.");
+			if (!ThreadPool.SetMaxThreads(workerCount, workerCount))
+				MainLogger.Warn("Failed to set max thread pool workers.");
+
 			try
 			{
 				var ffmpegMutex = new Mutex(false, $"{ProgramName}_FFmpegMutex");
@@ -93,11 +100,13 @@ namespace ParallelPixivUtil2
 								{
 									exitCode = ex.HResult;
 								}
+								finally
+								{
+									ffmpegMutex.ReleaseMutex();
 
-								ffmpegMutex.ReleaseMutex();
-
-								IPCLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
-								socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
+									IPCLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
+									socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
+								}
 							});
 							break;
 						case "DL":
@@ -126,29 +135,23 @@ namespace ParallelPixivUtil2
 
 				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(out int totalCount);
 
-				int workerCount = Math.Max(config.MaxExtractorParallellism, Math.Max(config.MaxDownloaderParallellism, config.MaxPostprocessorParallellism)) + 4;
-				if (!ThreadPool.SetMinThreads(workerCount, workerCount))
-					MainLogger.Warn("Failed to set min thread pool workers.");
-				if (!ThreadPool.SetMaxThreads(workerCount, workerCount))
-					MainLogger.Warn("Failed to set max thread pool workers.");
-
 				if (!onlyPostProcessing)
 				{
 					MainLogger.Info("Extracting member images.");
-					using (var semaphore = new Semaphore(config.MaxExtractorParallellism, config.MaxExtractorParallellism, $"{ProgramName}_ExtractorParallellismSemaphore"))
+					using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
 					{
 						await ExtractMemberImages(totalCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
 					}
 
 					MainLogger.Info("Start downloading.");
-					using (var semaphore = new Semaphore(config.MaxDownloaderParallellism, config.MaxDownloaderParallellism, $"{ProgramName}_DownloaderParallellismSemaphore"))
+					using (var semaphore = new SemaphoreSlim(config.MaxDownloaderParallellism))
 					{
 						await DownloadImages(totalCount, workingDirectory, memberPageList, semaphore, config.DownloaderParameters);
 					}
 				}
 
 				MainLogger.Info("Start post-processing.");
-				using (var semaphore = new Semaphore(config.MaxPostprocessorParallellism, config.MaxPostprocessorParallellism, $"{ProgramName}_PostprocessorParallellismSemaphore"))
+				using (var semaphore = new SemaphoreSlim(config.MaxPostprocessorParallellism))
 				{
 					await Postprocess(totalCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
 				}
@@ -161,113 +164,123 @@ namespace ParallelPixivUtil2
 			return 0;
 		}
 
-		private static async Task Postprocess(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, Semaphore semaphore, bool pythonSourceFileExists)
+		private static async Task Postprocess(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
 		{
 
 			int remaining = totalPageCount;
-			var tasks = new List<Task>();
 
+			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
-				tasks.AddRange(pages.Select(page => Task.Run(() =>
+				foreach (MemberPage page in pages)
 				{
-					semaphore.WaitOne();
-					MainLogger.InfoFormat("Post-processing started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
+					await semaphore.WaitAsync();
+					tasks.Add(Task.Run(() =>
+					{
+						MainLogger.InfoFormat("Post-processing started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
 
-					try
-					{
-						var postProcessor = new Process();
-						postProcessor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
-						postProcessor.StartInfo.WorkingDirectory = workingDir;
-						postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
-						postProcessor.StartInfo.UseShellExecute = false;
-						postProcessor.StartInfo.CreateNoWindow = true;
-						postProcessor.Start();
-						postProcessor.WaitForExit();
-					}
-					catch (Exception ex)
-					{
-						MainLogger.Error("Failed to execute post-processor.", ex);
-					}
-					finally
-					{
-						semaphore.Release();
-						MainLogger.InfoFormat("Post-processing finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
-					}
-				})));
+						try
+						{
+							var postProcessor = new Process();
+							postProcessor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
+							postProcessor.StartInfo.WorkingDirectory = workingDir;
+							postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
+							postProcessor.StartInfo.UseShellExecute = false;
+							postProcessor.StartInfo.CreateNoWindow = true;
+							postProcessor.Start();
+							postProcessor.WaitForExit();
+						}
+						catch (Exception ex)
+						{
+							MainLogger.Error("Failed to execute post-processor.", ex);
+						}
+						finally
+						{
+							semaphore.Release();
+							MainLogger.InfoFormat("Post-processing finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
+						}
+					}));
+				}
 			}
 
 			await Task.WhenAll(tasks);
 		}
 
-		private static async Task DownloadImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, Semaphore semaphore, string parameters)
+		private static async Task DownloadImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, string parameters)
 		{
 			int remaining = totalPageCount;
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
-				tasks.AddRange(pages.Select(page => Task.Run(() =>
+				foreach (MemberPage page in pages)
 				{
-					semaphore.WaitOne();
-					MainLogger.InfoFormat("Downloading started: '{0}.p{1}'.", memberId, page.FileIndex);
+					await semaphore.WaitAsync();
+					tasks.Add(Task.Run(() =>
+					{
+						MainLogger.InfoFormat("Downloading started: '{0}.p{1}'.", memberId, page.FileIndex);
 
-					try
-					{
-						var downloader = new Process();
-						downloader.StartInfo.FileName = $"{workingDir}\\aria2c.exe";
-						downloader.StartInfo.WorkingDirectory = workingDir;
-						downloader.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{page.FileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{page.FileIndex}.log\" {parameters}";
-						downloader.StartInfo.UseShellExecute = false;
-						downloader.StartInfo.CreateNoWindow = true;
-						downloader.Start();
-						downloader.WaitForExit();
-					}
-					catch (Exception ex)
-					{
-						MainLogger.Error("Failed to execute downloader.", ex);
-					}
-					finally
-					{
-						semaphore.Release();
-						MainLogger.InfoFormat("Donwloading finished: '{0}.p{1}'; waiting for {2} remaining operations.", memberId, page.FileIndex, Interlocked.Decrement(ref remaining));
-					}
-				})));
+						try
+						{
+							var downloader = new Process();
+							downloader.StartInfo.FileName = $"{workingDir}\\aria2c.exe";
+							downloader.StartInfo.WorkingDirectory = workingDir;
+							downloader.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{page.FileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{page.FileIndex}.log\" {parameters}";
+							downloader.StartInfo.UseShellExecute = false;
+							downloader.StartInfo.CreateNoWindow = true;
+							downloader.Start();
+							downloader.WaitForExit();
+						}
+						catch (Exception ex)
+						{
+							MainLogger.Error("Failed to execute downloader.", ex);
+						}
+						finally
+						{
+							semaphore.Release();
+							MainLogger.InfoFormat("Donwloading finished: '{0}.p{1}'; waiting for {2} remaining operations.", memberId, page.FileIndex, Interlocked.Decrement(ref remaining));
+						}
+					}));
+				}
 			}
+
 			await Task.WhenAll(tasks);
 		}
 
-		private static async Task ExtractMemberImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, Semaphore semaphore, bool pythonSourceFileExists)
+		private static async Task ExtractMemberImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
 		{
 			int remaining = totalPageCount;
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
-				tasks.AddRange(pages.Select(page => Task.Run(() =>
+				foreach (MemberPage page in pages)
 				{
-					semaphore.WaitOne();
-					MainLogger.InfoFormat("Extraction started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
+					await semaphore.WaitAsync();
+					tasks.Add(Task.Run(() =>
+					{
+						MainLogger.InfoFormat("Extraction started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
 
-					try
-					{
-						var extractor = new Process();
-						extractor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
-						extractor.StartInfo.WorkingDirectory = workingDir;
-						extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.log\" --aria2=\"aria2\\{memberId}.p{page.FileIndex}.txt\"";
-						extractor.StartInfo.UseShellExecute = true;
-						extractor.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-						extractor.Start();
-						extractor.WaitForExit();
-					}
-					catch (Exception ex)
-					{
-						MainLogger.Error("Failed to execute extractor.", ex);
-					}
-					finally
-					{
-						semaphore.Release();
-						MainLogger.InfoFormat("Extraction finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
-					}
-				})));
+						try
+						{
+							var extractor = new Process();
+							extractor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
+							extractor.StartInfo.WorkingDirectory = workingDir;
+							extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.log\" --aria2=\"aria2\\{memberId}.p{page.FileIndex}.txt\"";
+							extractor.StartInfo.UseShellExecute = true;
+							extractor.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+							extractor.Start();
+							extractor.WaitForExit();
+						}
+						catch (Exception ex)
+						{
+							MainLogger.Error("Failed to execute extractor.", ex);
+						}
+						finally
+						{
+							semaphore.Release();
+							MainLogger.InfoFormat("Extraction finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
+						}
+					}));
+				}
 			}
 
 			await Task.WhenAll(tasks);
