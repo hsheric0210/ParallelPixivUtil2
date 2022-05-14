@@ -69,11 +69,11 @@ namespace ParallelPixivUtil2
 					switch (group)
 					{
 						case "HS":
-							PostprocessorLogger.InfoFormat("IPC Handshake received from {0} - '{1}'", uidString, message[0].ConvertToStringUTF8());
+							PostprocessorLogger.InfoFormat("{0} | IPC Handshake received - '{1}'", uidString, message[0].ConvertToStringUTF8());
 							socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
 							break;
 						case "FFMPEG":
-							PostprocessorLogger.InfoFormat("FFmpeg execution request received from {0} - '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
+							PostprocessorLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
 							Task.Run(() =>
 							{
 								ffmpegMutex.WaitOne();
@@ -98,7 +98,7 @@ namespace ParallelPixivUtil2
 
 								ffmpegMutex.ReleaseMutex();
 
-								PostprocessorLogger.InfoFormat("FFmpeg execution requested by {0} exited with code {1}.", uidString, exitCode);
+								PostprocessorLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
 								socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
 							});
 							break;
@@ -182,7 +182,7 @@ namespace ParallelPixivUtil2
 						postProcessor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
 						postProcessor.StartInfo.WorkingDirectory = workingDir;
 						postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
-						postProcessor.StartInfo.UseShellExecute = true;
+						postProcessor.StartInfo.UseShellExecute = false;
 						postProcessor.StartInfo.CreateNoWindow = true;
 						postProcessor.Start();
 						postProcessor.WaitForExit();
@@ -219,8 +219,8 @@ namespace ParallelPixivUtil2
 						downloader.StartInfo.FileName = $"{workingDir}\\aria2c.exe";
 						downloader.StartInfo.WorkingDirectory = workingDir;
 						downloader.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{page.FileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{page.FileIndex}.log\" {parameters}";
-						downloader.StartInfo.UseShellExecute = true;
-						downloader.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
+						downloader.StartInfo.UseShellExecute = false;
+						downloader.StartInfo.CreateNoWindow = true;
 						downloader.Start();
 						downloader.WaitForExit();
 					}
@@ -256,7 +256,7 @@ namespace ParallelPixivUtil2
 						extractor.StartInfo.WorkingDirectory = workingDir;
 						extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.log\" --aria2=\"aria2\\{memberId}.p{page.FileIndex}.txt\"";
 						extractor.StartInfo.UseShellExecute = true;
-						extractor.StartInfo.CreateNoWindow = true;
+						extractor.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
 						extractor.Start();
 						extractor.WaitForExit();
 					}
