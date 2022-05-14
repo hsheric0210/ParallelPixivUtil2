@@ -12,6 +12,7 @@ namespace ParallelPixivUtil2
 		public const string ProgramName = "ParallelPixivUtil2";
 		private const string MemberDataListFileName = "memberdata.txt";
 		private const string ListFileName = "list.txt";
+		const string IPCSocketAddress = "tcp://localhost:6974";
 
 		private static readonly ILog MainLogger = LogManager.GetLogger("Main");
 		private static readonly ILog ExtractorLogger = LogManager.GetLogger("Extractor");
@@ -61,6 +62,53 @@ namespace ParallelPixivUtil2
 
 			try
 			{
+				var ffmpegMutex = new Mutex(false, "FFmpeg mutex");
+				using IpcConnection socket = IpcExtension.InitializeIPCSocket(IPCSocketAddress, (socket, uidFrame, group, message) =>
+				{
+					string uidString = uidFrame.ToUniqueIDString();
+					switch (group)
+					{
+						case "HS":
+							PostprocessorLogger.InfoFormat("IPC Handshake received from {0} - '{1}'", uidString, message[0].ConvertToStringUTF8());
+							socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
+							break;
+						case "FFMPEG":
+							PostprocessorLogger.InfoFormat("FFmpeg execution request received from {0} - '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
+							Task.Run(() =>
+							{
+								ffmpegMutex.WaitOne();
+
+								int exitCode = -1;
+								try
+								{
+									var ffmpeg = new Process();
+									ffmpeg.StartInfo.FileName = config.FFmpegLocation;
+									ffmpeg.StartInfo.WorkingDirectory = workingDirectory;
+									ffmpeg.StartInfo.UseShellExecute = true;
+									foreach (NetMQFrame arg in message)
+										ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToStringUTF8());
+									ffmpeg.Start();
+									ffmpeg.WaitForExit();
+									exitCode = ffmpeg.ExitCode;
+								}
+								catch (Exception ex)
+								{
+									exitCode = ex.HResult;
+								}
+
+								ffmpegMutex.ReleaseMutex();
+
+								PostprocessorLogger.InfoFormat("FFmpeg execution requested by {0} exited with code {1}.", uidString, exitCode);
+								socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
+							});
+							break;
+						case "DL":
+							PostprocessorLogger.InfoFormat("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
+							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
+							break;
+					}
+				});
+
 				MainLogger.InfoFormat("Reading all lines of {0}", ListFileName);
 				string[] memberIds = File.ReadAllLines(ListFileName);
 
@@ -104,7 +152,7 @@ namespace ParallelPixivUtil2
 				MainLogger.Info("Start post-processing.");
 				using (var semaphore = new Semaphore(config.MaxPostprocessorParallellism, config.MaxPostprocessorParallellism, "PostprocessorParallelism"))
 				{
-					await Postprocess(totalCount, workingDirectory, config.FFmpegLocation, memberPageList, semaphore, pythonSourceFileExists);
+					await Postprocess(totalCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
 				}
 			}
 			catch (Exception ex)
@@ -115,60 +163,11 @@ namespace ParallelPixivUtil2
 			return 0;
 		}
 
-		private static async Task Postprocess(int totalPageCount, string workingDir, string ffmpegLocation, IDictionary<long, ICollection<MemberPage>> memberPageList, Semaphore semaphore, bool pythonSourceFileExists)
+		private static async Task Postprocess(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, Semaphore semaphore, bool pythonSourceFileExists)
 		{
-			const string socketAddr = "tcp://localhost:6974";
 
 			int remaining = totalPageCount;
 			var tasks = new List<Task>();
-
-			var ffmpegMutex = new Mutex(false, "FFmpeg mutex");
-			using IpcConnection socket = IpcExtension.InitializeIPCSocket(socketAddr, (socket, uidFrame, group, message) =>
-			{
-				string uidString = uidFrame.ToUniqueIDString();
-				switch (group)
-				{
-					case "HS":
-						PostprocessorLogger.InfoFormat("IPC Handshake received from {0} - '{1}'", uidString, message[0].ConvertToStringUTF8());
-						socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
-						break;
-					case "FFMPEG":
-						PostprocessorLogger.InfoFormat("FFmpeg execution request received from {0} - '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
-						Task.Run(() =>
-						{
-							ffmpegMutex.WaitOne();
-
-							int exitCode = -1;
-							try
-							{
-								var ffmpeg = new Process();
-								ffmpeg.StartInfo.FileName = ffmpegLocation;
-								ffmpeg.StartInfo.WorkingDirectory = workingDir;
-								ffmpeg.StartInfo.UseShellExecute = true;
-								foreach (NetMQFrame arg in message)
-									ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToStringUTF8());
-								ffmpeg.Start();
-								ffmpeg.WaitForExit();
-								exitCode = ffmpeg.ExitCode;
-							}
-							catch (Exception ex)
-							{
-								exitCode = ex.HResult;
-							}
-
-							ffmpegMutex.ReleaseMutex();
-
-							PostprocessorLogger.InfoFormat("FFmpeg execution requested by {0} exited with code {1}.", uidString, exitCode);
-							socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
-						});
-						break;
-					case "DL":
-						PostprocessorLogger.InfoFormat("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
-						socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
-						break;
-				}
-			});
-
 
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
@@ -182,8 +181,9 @@ namespace ParallelPixivUtil2
 						var postProcessor = new Process();
 						postProcessor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
 						postProcessor.StartInfo.WorkingDirectory = workingDir;
-						postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={socketAddr} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
-						postProcessor.StartInfo.UseShellExecute = false;
+						postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
+						postProcessor.StartInfo.UseShellExecute = true;
+						postProcessor.StartInfo.CreateNoWindow = true;
 						postProcessor.Start();
 						postProcessor.WaitForExit();
 					}
@@ -254,9 +254,9 @@ namespace ParallelPixivUtil2
 						var extractor = new Process();
 						extractor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
 						extractor.StartInfo.WorkingDirectory = workingDir;
-						extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.log\" --aria2=\"aria2\\{memberId}.p{page.FileIndex}.txt\"";
+						extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.log\" --aria2=\"aria2\\{memberId}.p{page.FileIndex}.txt\"";
 						extractor.StartInfo.UseShellExecute = true;
-						extractor.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
+						extractor.StartInfo.CreateNoWindow = true;
 						extractor.Start();
 						extractor.WaitForExit();
 					}
