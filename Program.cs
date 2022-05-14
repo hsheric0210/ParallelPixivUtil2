@@ -166,7 +166,6 @@ namespace ParallelPixivUtil2
 
 		private static async Task Postprocess(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
 		{
-
 			int remaining = totalPageCount;
 
 			var tasks = new List<Task>();
@@ -225,8 +224,8 @@ namespace ParallelPixivUtil2
 							downloader.StartInfo.FileName = $"{workingDir}\\aria2c.exe";
 							downloader.StartInfo.WorkingDirectory = workingDir;
 							downloader.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{page.FileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{page.FileIndex}.log\" {parameters}";
-							downloader.StartInfo.UseShellExecute = false;
-							downloader.StartInfo.CreateNoWindow = true;
+							downloader.StartInfo.UseShellExecute = true;
+							downloader.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
 							downloader.Start();
 							downloader.WaitForExit();
 						}
