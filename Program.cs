@@ -15,9 +15,7 @@ namespace ParallelPixivUtil2
 		const string IPCSocketAddress = "tcp://localhost:6974";
 
 		private static readonly ILog MainLogger = LogManager.GetLogger("Main");
-		private static readonly ILog ExtractorLogger = LogManager.GetLogger("Extractor");
-		private static readonly ILog DownloadLogger = LogManager.GetLogger("Downloader");
-		private static readonly ILog PostprocessorLogger = LogManager.GetLogger("Post-processor");
+		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
 
 		private Program()
 		{
@@ -69,11 +67,11 @@ namespace ParallelPixivUtil2
 					switch (group)
 					{
 						case "HS":
-							PostprocessorLogger.InfoFormat("{0} | IPC Handshake received - '{1}'", uidString, message[0].ConvertToStringUTF8());
+							IPCLogger.InfoFormat("{0} | IPC Handshake received - '{1}'", uidString, message[0].ConvertToStringUTF8());
 							socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
 							break;
 						case "FFMPEG":
-							PostprocessorLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
+							IPCLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
 							Task.Run(() =>
 							{
 								ffmpegMutex.WaitOne();
@@ -98,12 +96,12 @@ namespace ParallelPixivUtil2
 
 								ffmpegMutex.ReleaseMutex();
 
-								PostprocessorLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
+								IPCLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
 								socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
 							});
 							break;
 						case "DL":
-							PostprocessorLogger.InfoFormat("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
+							IPCLogger.InfoFormat("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
 							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
 							break;
 					}
@@ -174,7 +172,7 @@ namespace ParallelPixivUtil2
 				tasks.AddRange(pages.Select(page => Task.Run(() =>
 				{
 					semaphore.WaitOne();
-					PostprocessorLogger.InfoFormat("Post-processing started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
+					MainLogger.InfoFormat("Post-processing started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
 
 					try
 					{
@@ -189,12 +187,12 @@ namespace ParallelPixivUtil2
 					}
 					catch (Exception ex)
 					{
-						PostprocessorLogger.Error("Failed to execute post-processor.", ex);
+						MainLogger.Error("Failed to execute post-processor.", ex);
 					}
 					finally
 					{
 						semaphore.Release();
-						PostprocessorLogger.InfoFormat("Post-processing finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
+						MainLogger.InfoFormat("Post-processing finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
 					}
 				})));
 			}
@@ -211,7 +209,7 @@ namespace ParallelPixivUtil2
 				tasks.AddRange(pages.Select(page => Task.Run(() =>
 				{
 					semaphore.WaitOne();
-					DownloadLogger.InfoFormat("Downloading started: '{0}.p{1}'.", memberId, page.FileIndex);
+					MainLogger.InfoFormat("Downloading started: '{0}.p{1}'.", memberId, page.FileIndex);
 
 					try
 					{
@@ -226,12 +224,12 @@ namespace ParallelPixivUtil2
 					}
 					catch (Exception ex)
 					{
-						DownloadLogger.Error("Failed to execute downloader.", ex);
+						MainLogger.Error("Failed to execute downloader.", ex);
 					}
 					finally
 					{
 						semaphore.Release();
-						DownloadLogger.InfoFormat("Donwloading finished: '{0}.p{1}'; waiting for {2} remaining operations.", memberId, page.FileIndex, Interlocked.Decrement(ref remaining));
+						MainLogger.InfoFormat("Donwloading finished: '{0}.p{1}'; waiting for {2} remaining operations.", memberId, page.FileIndex, Interlocked.Decrement(ref remaining));
 					}
 				})));
 			}
@@ -247,7 +245,7 @@ namespace ParallelPixivUtil2
 				tasks.AddRange(pages.Select(page => Task.Run(() =>
 				{
 					semaphore.WaitOne();
-					ExtractorLogger.InfoFormat("Extraction started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
+					MainLogger.InfoFormat("Extraction started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
 
 					try
 					{
@@ -262,12 +260,12 @@ namespace ParallelPixivUtil2
 					}
 					catch (Exception ex)
 					{
-						ExtractorLogger.Error("Failed to execute extractor.", ex);
+						MainLogger.Error("Failed to execute extractor.", ex);
 					}
 					finally
 					{
 						semaphore.Release();
-						ExtractorLogger.InfoFormat("Extraction finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
+						MainLogger.InfoFormat("Extraction finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
 					}
 				})));
 			}
