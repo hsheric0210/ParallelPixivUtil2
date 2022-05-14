@@ -1,0 +1,24 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace ParallelPixivUtil2
+{
+	public enum PixivDownloadResult
+	{
+		PIXIVUTIL_NOT_OK = -1,
+		PIXIVUTIL_OK = 0,
+		PIXIVUTIL_SKIP_OLDER = 1,
+		PIXIVUTIL_SKIP_BLACKLIST = 2,
+		PIXIVUTIL_KEYBOARD_INTERRUPT = 3,
+		PIXIVUTIL_SKIP_DUPLICATE = 4,
+		PIXIVUTIL_SKIP_LOCAL_LARGER = 5,
+		PIXIVUTIL_CHECK_DOWNLOAD = 6,
+		PIXIVUTIL_SIZE_LIMIT_LARGER = 7,
+		PIXIVUTIL_SIZE_LIMIT_SMALLER = 8,
+		PIXIVUTIL_SKIP_DUPLICATE_NO_WAIT = 9,
+		PIXIVUTIL_ABORTED = 9999
+	}
+}

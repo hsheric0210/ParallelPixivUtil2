@@ -3,6 +3,7 @@ using System.Text;
 using NetMQ;
 using NetMQ.Sockets;
 using log4net;
+using System.Collections.Concurrent;
 
 namespace ParallelPixivUtil2
 {
@@ -88,20 +89,20 @@ namespace ParallelPixivUtil2
 				if (!onlyPostProcessing)
 				{
 					MainLogger.Info("Extracting member images.");
-					using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
+					using (var semaphore = new Semaphore(config.MaxExtractorParallellism, config.MaxExtractorParallellism, "ExtractorParallellism"))
 					{
 						await ExtractMemberImages(totalCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
 					}
 
 					MainLogger.Info("Start downloading.");
-					using (var semaphore = new SemaphoreSlim(config.MaxDownloaderParallellism))
+					using (var semaphore = new Semaphore(config.MaxDownloaderParallellism, config.MaxDownloaderParallellism, "DownloaderParallellism"))
 					{
 						await DownloadImages(totalCount, workingDirectory, memberPageList, semaphore, config.DownloaderParameters);
 					}
 				}
 
 				MainLogger.Info("Start post-processing.");
-				using (var semaphore = new SemaphoreSlim(config.MaxPostprocessorParallellism))
+				using (var semaphore = new Semaphore(config.MaxPostprocessorParallellism, config.MaxPostprocessorParallellism, "PostprocessorParallelism"))
 				{
 					await Postprocess(totalCount, workingDirectory, config.FFmpegLocation, memberPageList, semaphore, pythonSourceFileExists);
 				}
@@ -114,7 +115,7 @@ namespace ParallelPixivUtil2
 			return 0;
 		}
 
-		private static async Task Postprocess(int totalPageCount, string workingDir, string ffmpegLocation, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
+		private static async Task Postprocess(int totalPageCount, string workingDir, string ffmpegLocation, IDictionary<long, ICollection<MemberPage>> memberPageList, Semaphore semaphore, bool pythonSourceFileExists)
 		{
 			const string socketAddr = "tcp://localhost:6974";
 
@@ -132,7 +133,7 @@ namespace ParallelPixivUtil2
 						socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
 						break;
 					case "FFMPEG":
-						PostprocessorLogger.InfoFormat("IPC FFmpeg execution request received from {0} - '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
+						PostprocessorLogger.InfoFormat("FFmpeg execution request received from {0} - '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
 						Task.Run(() =>
 						{
 							ffmpegMutex.WaitOne();
@@ -157,18 +158,23 @@ namespace ParallelPixivUtil2
 
 							ffmpegMutex.ReleaseMutex();
 
-							PostprocessorLogger.InfoFormat("FFmpeg exited with code {0}.", exitCode);
+							PostprocessorLogger.InfoFormat("FFmpeg execution requested by {0} exited with code {1}.", uidString, exitCode);
 							socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
 						});
 						break;
+					case "DL":
+						PostprocessorLogger.InfoFormat("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
+						socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
+						break;
 				}
 			});
+
 
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
 				tasks.AddRange(pages.Select(page => Task.Run(() =>
 				{
-					semaphore.Wait();
+					semaphore.WaitOne();
 					PostprocessorLogger.InfoFormat("Post-processing started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
 
 					try
@@ -177,8 +183,7 @@ namespace ParallelPixivUtil2
 						postProcessor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
 						postProcessor.StartInfo.WorkingDirectory = workingDir;
 						postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={socketAddr} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
-						postProcessor.StartInfo.UseShellExecute = true;
-						postProcessor.StartInfo.WindowStyle = ProcessWindowStyle.Minimized; // TODO: Disable window, only communicate with IPC
+						postProcessor.StartInfo.UseShellExecute = false;
 						postProcessor.Start();
 						postProcessor.WaitForExit();
 					}
@@ -197,7 +202,7 @@ namespace ParallelPixivUtil2
 			await Task.WhenAll(tasks);
 		}
 
-		private static async Task DownloadImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, string parameters)
+		private static async Task DownloadImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, Semaphore semaphore, string parameters)
 		{
 			int remaining = totalPageCount;
 			var tasks = new List<Task>();
@@ -205,7 +210,7 @@ namespace ParallelPixivUtil2
 			{
 				tasks.AddRange(pages.Select(page => Task.Run(() =>
 				{
-					semaphore.Wait();
+					semaphore.WaitOne();
 					DownloadLogger.InfoFormat("Downloading started: '{0}.p{1}'.", memberId, page.FileIndex);
 
 					try
@@ -233,7 +238,7 @@ namespace ParallelPixivUtil2
 			await Task.WhenAll(tasks);
 		}
 
-		private static async Task ExtractMemberImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
+		private static async Task ExtractMemberImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, Semaphore semaphore, bool pythonSourceFileExists)
 		{
 			int remaining = totalPageCount;
 			var tasks = new List<Task>();
@@ -241,7 +246,7 @@ namespace ParallelPixivUtil2
 			{
 				tasks.AddRange(pages.Select(page => Task.Run(() =>
 				{
-					semaphore.Wait();
+					semaphore.WaitOne();
 					ExtractorLogger.InfoFormat("Extraction started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
 
 					try
