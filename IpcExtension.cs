@@ -49,7 +49,7 @@ namespace ParallelPixivUtil2
 			Dispose(true);
 		}
 
-		protected void Dispose(bool disposing)
+		private void Dispose(bool disposing)
 		{
 			if (disposing)
 			{

@@ -1,10 +1,6 @@
 ﻿using System.Diagnostics;
-using System.Text;
 using NetMQ;
-using NetMQ.Sockets;
 using log4net;
-using System.Collections.Concurrent;
-using System.Linq;
 
 namespace ParallelPixivUtil2
 {
@@ -211,19 +207,19 @@ namespace ParallelPixivUtil2
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
-				foreach (MemberPage page in pages)
+				foreach (int fileIndex in pages.Select(page => page.FileIndex))
 				{
 					await semaphore.WaitAsync();
 					tasks.Add(Task.Run(() =>
 					{
-						MainLogger.InfoFormat("Downloading started: '{0}.p{1}'.", memberId, page.FileIndex);
+						MainLogger.InfoFormat("Downloading started: '{0}.p{1}'.", memberId, fileIndex);
 
 						try
 						{
 							var downloader = new Process();
 							downloader.StartInfo.FileName = $"{workingDir}\\aria2c.exe";
 							downloader.StartInfo.WorkingDirectory = workingDir;
-							downloader.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{page.FileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{page.FileIndex}.log\" {parameters}";
+							downloader.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{fileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{fileIndex}.log\" {parameters}";
 							downloader.StartInfo.UseShellExecute = true;
 							downloader.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
 							downloader.Start();
@@ -236,7 +232,7 @@ namespace ParallelPixivUtil2
 						finally
 						{
 							semaphore.Release();
-							MainLogger.InfoFormat("Donwloading finished: '{0}.p{1}'; waiting for {2} remaining operations.", memberId, page.FileIndex, Interlocked.Decrement(ref remaining));
+							MainLogger.InfoFormat("Donwloading finished: '{0}.p{1}'; waiting for {2} remaining operations.", memberId, fileIndex, Interlocked.Decrement(ref remaining));
 						}
 					}));
 				}
