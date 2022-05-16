@@ -1,6 +1,6 @@
-﻿using System.Diagnostics;
+﻿using log4net;
 using NetMQ;
-using log4net;
+using System.Diagnostics;
 
 namespace ParallelPixivUtil2
 {
@@ -9,13 +9,31 @@ namespace ParallelPixivUtil2
 		public const string ProgramName = "ParallelPixivUtil2";
 		private const string MemberDataListFileName = "memberdata.txt";
 		private const string ListFileName = "list.txt";
-		const string IPCSocketAddress = "tcp://localhost:6974";
+		private const string IPCSocketAddress = "tcp://localhost:6974";
 
 		private static readonly ILog MainLogger = LogManager.GetLogger("Main");
 		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
 
+		private static string CurrentPhaseName = "Unknown";
+		private static int RemainingImageCount;
+		private static int TotalImageCount;
+
 		private Program()
 		{
+		}
+
+		private static void PhaseChange(string phaseName, int totalImageCount)
+		{
+			CurrentPhaseName = phaseName;
+			RemainingImageCount = TotalImageCount = totalImageCount;
+		}
+
+		private static string ImageProcessed()
+		{
+			int remaining = Interlocked.Decrement(ref RemainingImageCount);
+			string progress = $"{remaining}/{TotalImageCount}";
+			Console.Title = $"{CurrentPhaseName} phase : Processed {progress} images";
+			return progress;
 		}
 
 		private static bool RequireExists(string fileName)
@@ -73,6 +91,7 @@ namespace ParallelPixivUtil2
 							IPCLogger.InfoFormat("{0} | IPC Handshake received - '{1}'", uidString, message[0].ConvertToStringUTF8());
 							socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
 							break;
+
 						case "FFMPEG":
 							IPCLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
 							Task.Run(async () =>
@@ -108,8 +127,9 @@ namespace ParallelPixivUtil2
 								});
 							});
 							break;
+
 						case "DL":
-							IPCLogger.InfoFormat("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
+							IPCLogger.InfoFormat("{0} | [{1}] Image {2} process result : {3}", uidString, ImageProcessed(), message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
 							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
 							break;
 					}
@@ -132,27 +152,30 @@ namespace ParallelPixivUtil2
 					return 1;
 				}
 
-				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(out int totalCount);
+				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(out int totalImageCount, out int totalPageCount);
 
 				if (!onlyPostProcessing)
 				{
 					MainLogger.Info("Extracting member images.");
+					PhaseChange("Extraction", TotalImageCount);
 					using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
 					{
-						await ExtractMemberImages(totalCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
+						await ExtractMemberImages(totalPageCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
 					}
 
 					MainLogger.Info("Start downloading.");
+					Console.Title = "Downloading phase";
 					using (var semaphore = new SemaphoreSlim(config.MaxDownloaderParallellism))
 					{
-						await DownloadImages(totalCount, workingDirectory, memberPageList, semaphore, config.DownloaderParameters);
+						await DownloadImages(totalPageCount, workingDirectory, memberPageList, semaphore, config.DownloaderParameters);
 					}
 				}
 
 				MainLogger.Info("Start post-processing.");
+				PhaseChange("Post-processing", TotalImageCount);
 				using (var semaphore = new SemaphoreSlim(config.MaxPostprocessorParallellism))
 				{
-					await Postprocess(totalCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
+					await Postprocess(totalPageCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
 				}
 			}
 			catch (Exception ex)
@@ -165,7 +188,7 @@ namespace ParallelPixivUtil2
 
 		private static async Task Postprocess(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
 		{
-			int remaining = totalPageCount;
+			int remainingOperationCount = totalPageCount;
 
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
@@ -195,7 +218,7 @@ namespace ParallelPixivUtil2
 						finally
 						{
 							semaphore.Release();
-							MainLogger.InfoFormat("Post-processing finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
+							MainLogger.InfoFormat("Post-processing finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remainingOperationCount));
 						}
 					}));
 				}
@@ -206,7 +229,7 @@ namespace ParallelPixivUtil2
 
 		private static async Task DownloadImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, string parameters)
 		{
-			int remaining = totalPageCount;
+			int remainingOperationCount = totalPageCount;
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
@@ -235,7 +258,7 @@ namespace ParallelPixivUtil2
 						finally
 						{
 							semaphore.Release();
-							MainLogger.InfoFormat("Donwloading finished: '{0}.p{1}'; waiting for {2} remaining operations.", memberId, fileIndex, Interlocked.Decrement(ref remaining));
+							MainLogger.InfoFormat("Donwloading finished: '{0}.p{1}'; waiting for {2} remaining operations.", memberId, fileIndex, Interlocked.Decrement(ref remainingOperationCount));
 						}
 					}));
 				}
@@ -284,10 +307,11 @@ namespace ParallelPixivUtil2
 			await Task.WhenAll(tasks);
 		}
 
-		private static IDictionary<long, ICollection<MemberPage>> ParseMemberDataList(out int totalCount)
+		private static IDictionary<long, ICollection<MemberPage>> ParseMemberDataList(out int totalImageCount, out int totalPageCount)
 		{
 			var memberPageList = new Dictionary<long, ICollection<MemberPage>>();
-			totalCount = 0;
+			totalImageCount = 0;
+			totalPageCount = 0;
 			foreach (string line in File.ReadAllLines(MemberDataListFileName))
 			{
 				if (string.IsNullOrWhiteSpace(line))
@@ -306,7 +330,8 @@ namespace ParallelPixivUtil2
 					int pageCount = (memberTotalImages - memberTotalImages % maxImagesPerPage) / maxImagesPerPage + 1;
 					for (int i = 1; i <= pageCount; i++)
 						memberPageList[memberId].Add(new MemberPage(i, pageCount - i + 1));
-					totalCount += pageCount;
+					totalPageCount += pageCount;
+					totalImageCount += memberTotalImages;
 					MainLogger.InfoFormat("Member {0} has {1} images -> {2} pages.", memberId, memberTotalImages, pageCount);
 				}
 				else
