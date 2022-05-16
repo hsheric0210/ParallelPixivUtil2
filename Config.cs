@@ -10,6 +10,8 @@
 		private const int DefaultMaxDownloaderParallellism = 4;
 		private const string MaxPostprocessorParallellismKey = "MaxPixivUtil2PostprocessParallellism";
 		private const int DefaultMaxPostprocessorParallellism = 4;
+		private const string MaxFFmpegParallellismKey = "FFmpegParallellism";
+		private const int DefaultMaxFFmpegParallellism = 4;
 		private const string DownloaderParametersKey = "Aria2Parameters";
 		private const string DefaultDownloaderParameters = "--allow-overwrite=true --conditional-get=true --remote-time=true --auto-file-renaming=false --auto-save-interval=10 -j16 -x2";
 		private const string MaxImagesPerPageKey = "MaxImagesPerPage";
@@ -28,6 +30,8 @@
 		public int MaxDownloaderParallellism => ParseInt(MaxDownloaderParallellismKey, DefaultMaxDownloaderParallellism);
 
 		public int MaxPostprocessorParallellism => ParseInt(MaxPostprocessorParallellismKey, DefaultMaxPostprocessorParallellism);
+
+		public int MaxFFmpegParallellism => ParseInt(MaxFFmpegParallellismKey, DefaultMaxFFmpegParallellism);
 
 		public string DownloaderParameters => ParseString(DownloaderParametersKey, DefaultDownloaderParameters);
 

@@ -55,7 +55,7 @@ namespace ParallelPixivUtil2
 			if (!pythonSourceFileExists && RequireExists($"{workingDirectory}\\PixivUtil2.exe") || RequireExists(ListFileName) || RequireExists($"{workingDirectory}\\config.ini") || RequireExists($"{workingDirectory}\\{config.DownloaderLocation}"))
 				return 1;
 
-			int workerCount = Math.Max(config.MaxExtractorParallellism, Math.Max(config.MaxDownloaderParallellism, config.MaxPostprocessorParallellism)) + 4;
+			int workerCount = Math.Max(config.MaxExtractorParallellism, Math.Max(config.MaxDownloaderParallellism, config.MaxPostprocessorParallellism)) + config.MaxFFmpegParallellism + 4;
 			if (!ThreadPool.SetMinThreads(workerCount, workerCount))
 				MainLogger.Warn("Failed to set min thread pool workers.");
 			if (!ThreadPool.SetMaxThreads(workerCount, workerCount))
@@ -63,7 +63,7 @@ namespace ParallelPixivUtil2
 
 			try
 			{
-				var ffmpegMutex = new Mutex(false, $"{ProgramName}_FFmpegMutex");
+				var ffmpegSemaphore = new SemaphoreSlim(config.MaxFFmpegParallellism);
 				using IpcConnection socket = IpcExtension.InitializeIPCSocket(IPCSocketAddress, (socket, uidFrame, group, message) =>
 				{
 					string uidString = uidFrame.ToUniqueIDString();
@@ -75,34 +75,37 @@ namespace ParallelPixivUtil2
 							break;
 						case "FFMPEG":
 							IPCLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
-							Task.Run(() =>
+							Task.Run(async () =>
 							{
-								ffmpegMutex.WaitOne();
+								await ffmpegSemaphore.WaitAsync();
 
-								int exitCode = -1;
-								try
+								await Task.Run(() =>
 								{
-									var ffmpeg = new Process();
-									ffmpeg.StartInfo.FileName = config.FFmpegLocation;
-									ffmpeg.StartInfo.WorkingDirectory = workingDirectory;
-									ffmpeg.StartInfo.UseShellExecute = true;
-									foreach (NetMQFrame arg in message)
-										ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToStringUTF8());
-									ffmpeg.Start();
-									ffmpeg.WaitForExit();
-									exitCode = ffmpeg.ExitCode;
-								}
-								catch (Exception ex)
-								{
-									exitCode = ex.HResult;
-								}
-								finally
-								{
-									ffmpegMutex.ReleaseMutex();
+									int exitCode = -1;
+									try
+									{
+										var ffmpeg = new Process();
+										ffmpeg.StartInfo.FileName = config.FFmpegLocation;
+										ffmpeg.StartInfo.WorkingDirectory = workingDirectory;
+										ffmpeg.StartInfo.UseShellExecute = true;
+										foreach (NetMQFrame arg in message)
+											ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToStringUTF8());
+										ffmpeg.Start();
+										ffmpeg.WaitForExit();
+										exitCode = ffmpeg.ExitCode;
+									}
+									catch (Exception ex)
+									{
+										exitCode = ex.HResult;
+									}
+									finally
+									{
+										ffmpegSemaphore.Release();
 
-									IPCLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
-									socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
-								}
+										IPCLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
+										socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
+									}
+								});
 							});
 							break;
 						case "DL":
