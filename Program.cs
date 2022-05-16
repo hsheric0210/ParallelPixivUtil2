@@ -15,7 +15,7 @@ namespace ParallelPixivUtil2
 		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
 
 		private static string CurrentPhaseName = "Unknown";
-		private static int RemainingImageCount;
+		private static int ProcessedImageCount;
 		private static int TotalImageCount;
 
 		private Program()
@@ -25,12 +25,13 @@ namespace ParallelPixivUtil2
 		private static void PhaseChange(string phaseName, int totalImageCount)
 		{
 			CurrentPhaseName = phaseName;
-			RemainingImageCount = TotalImageCount = totalImageCount;
+			ProcessedImageCount = 0;
+			TotalImageCount = totalImageCount;
 		}
 
 		private static string ImageProcessed()
 		{
-			int remaining = Interlocked.Decrement(ref RemainingImageCount);
+			int remaining = Interlocked.Increment(ref ProcessedImageCount);
 			string progress = $"{remaining}/{TotalImageCount}";
 			Console.Title = $"{CurrentPhaseName} phase : Processed {progress} images";
 			return progress;
