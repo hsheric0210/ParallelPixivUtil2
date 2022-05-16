@@ -157,7 +157,7 @@ namespace ParallelPixivUtil2
 				if (!onlyPostProcessing)
 				{
 					MainLogger.Info("Extracting member images.");
-					PhaseChange("Extraction", TotalImageCount);
+					PhaseChange("Extraction", totalImageCount);
 					using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
 					{
 						await ExtractMemberImages(totalPageCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
@@ -172,7 +172,7 @@ namespace ParallelPixivUtil2
 				}
 
 				MainLogger.Info("Start post-processing.");
-				PhaseChange("Post-processing", TotalImageCount);
+				PhaseChange("Post-processing", totalImageCount);
 				using (var semaphore = new SemaphoreSlim(config.MaxPostprocessorParallellism))
 				{
 					await Postprocess(totalPageCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
