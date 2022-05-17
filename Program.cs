@@ -14,6 +14,8 @@ namespace ParallelPixivUtil2
 		private static readonly ILog MainLogger = LogManager.GetLogger("Main");
 		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
 
+		private static IDictionary<byte[], string> IPCIdentifiers = new Dictionary<byte[], string>();
+
 		private static string CurrentPhaseName = "Unknown";
 		private static int ProcessedImageCount;
 		private static int TotalImageCount;
@@ -86,11 +88,19 @@ namespace ParallelPixivUtil2
 				using IpcConnection socket = IpcExtension.InitializeIPCSocket(IPCSocketAddress, (socket, uidFrame, group, message) =>
 				{
 					string uidString = uidFrame.ToUniqueIDString();
+					if (!IPCIdentifiers.TryGetValue(uidFrame.ToByteArray(), out string? identifier))
+						uidString += $" ({identifier})";
 					switch (group)
 					{
 						case "HS":
-							IPCLogger.InfoFormat("{0} | IPC Handshake received - '{1}'", uidString, message[0].ConvertToStringUTF8());
+							IPCLogger.InfoFormat("{0} | IPC Handshake received : '{1}'", uidString, message[0].ConvertToStringUTF8());
 							socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
+							break;
+
+						case "IDENT":
+							IPCLogger.InfoFormat("{0} | IPC identifier change requested : '{1}'", uidString, message[0].ConvertToStringUTF8());
+							IPCIdentifiers[uidFrame.ToByteArray()] = message[0].ConvertToStringUTF8();
+							socket.Send(uidFrame, group, NetMQFrame.Empty);
 							break;
 
 						case "FFMPEG":
@@ -131,6 +141,11 @@ namespace ParallelPixivUtil2
 
 						case "DL":
 							IPCLogger.InfoFormat("{0} | [{1}] Image {2} process result : {3}", uidString, ImageProcessed(), message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
+							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
+							break;
+
+						case "TITLE":
+							IPCLogger.InfoFormat("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
 							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
 							break;
 					}
