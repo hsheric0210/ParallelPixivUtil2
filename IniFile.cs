@@ -6,7 +6,8 @@ using System;
 // https://stackoverflow.com/questions/217902/reading-writing-an-ini-file
 namespace ParallelPixivUtil2
 {
-	public class IniFile   // revision 11
+	// revision 11 + 1
+	public class IniFile   
 	{
 		private readonly string Path;
 		private readonly string EXE = Assembly.GetExecutingAssembly().GetName().Name ?? "Program";
