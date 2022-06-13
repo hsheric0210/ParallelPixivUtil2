@@ -7,7 +7,7 @@ using System;
 namespace ParallelPixivUtil2
 {
 	// revision 11 + 1
-	public class IniFile   
+	public class IniFile
 	{
 		private readonly string Path;
 		private readonly string EXE = Assembly.GetExecutingAssembly().GetName().Name ?? "Program";
@@ -25,8 +25,8 @@ namespace ParallelPixivUtil2
 
 		public string Read(string Key, string? Section = null, bool silent = false)
 		{
-			var RetVal = new StringBuilder(255);
-			_ = GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 255, Path);
+			var RetVal = new StringBuilder(1024);
+			_ = GetPrivateProfileString(Section ?? EXE, Key, "", RetVal, 1024, Path);
 			if (!silent)
 			{
 				int lastError = GetLastError();

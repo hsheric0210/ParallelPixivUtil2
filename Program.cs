@@ -7,14 +7,11 @@ namespace ParallelPixivUtil2
 	public sealed class Program
 	{
 		public const string ProgramName = "ParallelPixivUtil2";
-		private const string MemberDataListFileName = "memberdata.txt";
-		private const string ListFileName = "list.txt";
-		private const string IPCSocketAddress = "tcp://localhost:6974";
 
 		private static readonly ILog MainLogger = LogManager.GetLogger("Main");
 		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
 
-		private static IDictionary<byte[], string> IPCIdentifiers = new Dictionary<byte[], string>();
+		private static readonly IDictionary<byte[], string> IPCIdentifiers = new Dictionary<byte[], string>();
 
 		private static string CurrentPhaseName = "Unknown";
 		private static int ProcessedImageCount;
@@ -66,14 +63,22 @@ namespace ParallelPixivUtil2
 
 			var config = new Config();
 
-			string? workingDirectory = config.ExtractorWorkingDirectory;
-			if (string.IsNullOrWhiteSpace(workingDirectory))
-				workingDirectory = Directory.GetCurrentDirectory();
-			else if (workingDirectory.EndsWith('\\'))
-				workingDirectory = Path.TrimEndingDirectorySeparator(workingDirectory);
+			string extractorExe = config.ExtractorExecutable;
+			string extractorPy = config.ExtractorScript;
+			string ipcAddress = $"tcp://localhost:{config.IPCPort}";
+			var pythonSourceFileExists = File.Exists(extractorPy);
+			if (!pythonSourceFileExists && RequireExists(extractorExe))
+				return 1;
 
-			var pythonSourceFileExists = File.Exists($"{workingDirectory}\\PixivUtil2.py");
-			if (!pythonSourceFileExists && RequireExists($"{workingDirectory}\\PixivUtil2.exe") || RequireExists(ListFileName) || RequireExists($"{workingDirectory}\\config.ini") || RequireExists($"{workingDirectory}\\{config.DownloaderLocation}"))
+			string? extractorWorkingDirectory = Path.GetDirectoryName(pythonSourceFileExists ? extractorPy : extractorExe);
+			if (string.IsNullOrWhiteSpace(extractorWorkingDirectory))
+			{
+				MainLogger.ErrorFormat("Extractor working directory not available for extractor {0}.", pythonSourceFileExists ? extractorPy : extractorExe);
+				return 1;
+			}
+
+			string listFile = config.ListFile;
+			if (RequireExists(listFile) || RequireExists($"{extractorWorkingDirectory}\\config.ini") || RequireExists(config.DownloaderExecutable))
 				return 1;
 
 			int workerCount = Math.Max(config.MaxExtractorParallellism, Math.Max(config.MaxDownloaderParallellism, config.MaxPostprocessorParallellism)) + config.MaxFFmpegParallellism + 4;
@@ -85,7 +90,7 @@ namespace ParallelPixivUtil2
 			try
 			{
 				var ffmpegSemaphore = new SemaphoreSlim(config.MaxFFmpegParallellism);
-				using IpcConnection socket = IpcExtension.InitializeIPCSocket(IPCSocketAddress, (socket, uidFrame, group, message) =>
+				using IpcConnection socket = IpcExtension.InitializeIPCSocket(ipcAddress, (socket, uidFrame, group, message) =>
 				{
 					string uidString = uidFrame.ToUniqueIDString();
 					if (!IPCIdentifiers.TryGetValue(uidFrame.ToByteArray(), out string? identifier))
@@ -115,8 +120,8 @@ namespace ParallelPixivUtil2
 									try
 									{
 										var ffmpeg = new Process();
-										ffmpeg.StartInfo.FileName = config.FFmpegLocation;
-										ffmpeg.StartInfo.WorkingDirectory = workingDirectory;
+										ffmpeg.StartInfo.FileName = config.FFmpegExecutable;
+										ffmpeg.StartInfo.WorkingDirectory = extractorWorkingDirectory;
 										ffmpeg.StartInfo.UseShellExecute = true;
 										foreach (NetMQFrame arg in message)
 											ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToStringUTF8());
@@ -151,24 +156,27 @@ namespace ParallelPixivUtil2
 					}
 				});
 
-				MainLogger.InfoFormat("Reading all lines of {0}", ListFileName);
-				string[] memberIds = File.ReadAllLines(ListFileName);
+				CreateDirectoryIfNotExists(config.LogPath);
+				CreateDirectoryIfNotExists(config.Aria2InputPath);
+				CreateDirectoryIfNotExists(config.DatabasePath);
 
-				CreateDirectoryIfNotExists("databases");
-				CreateDirectoryIfNotExists("logs");
-				CreateDirectoryIfNotExists("aria2");
-				CreateDirectoryIfNotExists("aria2-logs");
+				MainLogger.InfoFormat("Reading all lines of {0}", listFile);
+				string[] memberIds = File.ReadAllLines(listFile);
+
+				var extractor = new ExtractorRecord(extractorExe, extractorPy, pythonSourceFileExists, extractorWorkingDirectory, ipcAddress, config.LogPath, config.Aria2InputPath, config.DatabasePath);
 
 				// Extract URLs
-				ExtractMemberDataList(pythonSourceFileExists, workingDirectory, memberIds);
+				RetrieveMemberDataList(extractor, config.MemberDataListParameters, config.MemberDataListFile, memberIds);
 
-				if (!File.Exists(MemberDataListFileName))
+				if (!File.Exists(config.MemberDataListFile))
 				{
-					MainLogger.Error("Failed to dump member informations. (Dump file not found)");
+					MainLogger.Error("Failed to dump member informations. (Member dump file not found)");
 					return 1;
 				}
 
-				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(out int totalImageCount, out int totalPageCount);
+				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(config.MemberDataListFile, out int totalImageCount, out int totalPageCount);
+				extractor.TotalPageCount = totalPageCount;
+				var downloader = new DownloaderRecord(totalPageCount, config.DownloaderExecutable, extractorWorkingDirectory, config.LogPath, config.Aria2InputPath, config.DatabasePath);
 
 				if (!onlyPostProcessing)
 				{
@@ -176,14 +184,14 @@ namespace ParallelPixivUtil2
 					PhaseChange("Extraction", totalImageCount);
 					using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
 					{
-						await ExtractMemberImages(totalPageCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
+						await RetrieveMemberImages(extractor, config.ExtractorParameters, memberPageList, semaphore);
 					}
 
 					MainLogger.Info("Start downloading.");
 					Console.Title = "Downloading phase";
 					using (var semaphore = new SemaphoreSlim(config.MaxDownloaderParallellism))
 					{
-						await DownloadImages(totalPageCount, workingDirectory, memberPageList, semaphore, config.DownloaderParameters);
+						await DownloadImages(downloader, config.DownloaderParameters, memberPageList, semaphore);
 					}
 				}
 
@@ -191,7 +199,7 @@ namespace ParallelPixivUtil2
 				PhaseChange("Post-processing", totalImageCount);
 				using (var semaphore = new SemaphoreSlim(config.MaxPostprocessorParallellism))
 				{
-					await Postprocess(totalPageCount, workingDirectory, memberPageList, semaphore, pythonSourceFileExists);
+					await Postprocess(extractor, config.PostprocessorParameters, memberPageList, semaphore);
 				}
 			}
 			catch (Exception ex)
@@ -202,9 +210,9 @@ namespace ParallelPixivUtil2
 			return 0;
 		}
 
-		private static async Task Postprocess(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
+		private static async Task Postprocess(ExtractorRecord extractor, string parameters, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore)
 		{
-			int remainingOperationCount = totalPageCount;
+			int remainingOperationCount = extractor.TotalPageCount;
 
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
@@ -216,12 +224,21 @@ namespace ParallelPixivUtil2
 					{
 						MainLogger.InfoFormat("Post-processing started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
 
+						var postProcessor = new Process();
 						try
 						{
-							var postProcessor = new Process();
-							postProcessor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
-							postProcessor.StartInfo.WorkingDirectory = workingDir;
-							postProcessor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.pp.log\"";
+							postProcessor.StartInfo.FileName = extractor.Executable;
+							postProcessor.StartInfo.WorkingDirectory = extractor.ExtractorWorkingDir;
+							postProcessor.StartInfo.Arguments = extractor.ExtraArguments + FormatTokens(parameters, new Dictionary<string, string>
+							{
+								["memberID"] = memberId.ToString(),
+								["page"] = page.Page.ToString(),
+								["fileIndex"] = page.FileIndex.ToString(),
+								["ipcAddress"] = extractor.IPCAddress,
+								["logPath"] = extractor.LogPath,
+								["aria2InputPath"] = extractor.Aria2InputPath,
+								["databasePath"] = extractor.DatabasePath
+							});
 							postProcessor.StartInfo.UseShellExecute = false;
 							postProcessor.StartInfo.CreateNoWindow = true;
 							postProcessor.Start();
@@ -234,7 +251,7 @@ namespace ParallelPixivUtil2
 						finally
 						{
 							semaphore.Release();
-							MainLogger.InfoFormat("Post-processing finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remainingOperationCount));
+							MainLogger.InfoFormat("Post-processing finished (Exit code {0}): '{1}.p{2}' (page {3}); waiting for {4} remaining operations.", postProcessor.ExitCode, memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remainingOperationCount));
 						}
 					}));
 				}
@@ -243,9 +260,9 @@ namespace ParallelPixivUtil2
 			await Task.WhenAll(tasks);
 		}
 
-		private static async Task DownloadImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, string parameters)
+		private static async Task DownloadImages(DownloaderRecord downloaderOpts, string parameters, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore)
 		{
-			int remainingOperationCount = totalPageCount;
+			int remainingOperationCount = downloaderOpts.TotalPageCount;
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
@@ -256,12 +273,19 @@ namespace ParallelPixivUtil2
 					{
 						MainLogger.InfoFormat("Downloading started: '{0}.p{1}'.", memberId, fileIndex);
 
+						var downloader = new Process();
 						try
 						{
-							var downloader = new Process();
-							downloader.StartInfo.FileName = $"{workingDir}\\aria2c.exe";
-							downloader.StartInfo.WorkingDirectory = workingDir;
-							downloader.StartInfo.Arguments = $"-i \"aria2\\{memberId}.p{fileIndex}.txt\" -l \"aria2-logs\\{memberId}.p{fileIndex}.log\" {parameters}";
+							downloader.StartInfo.FileName = downloaderOpts.Executable;
+							downloader.StartInfo.WorkingDirectory = downloaderOpts.ExtractorWorkingDir;
+							downloader.StartInfo.Arguments = FormatTokens(parameters, new Dictionary<string, string>
+							{
+								["memberID"] = memberId.ToString(),
+								["fileIndex"] = fileIndex.ToString(),
+								["logPath"] = downloaderOpts.LogPath,
+								["aria2InputPath"] = downloaderOpts.Aria2InputPath,
+								["databasePath"] = downloaderOpts.DatabasePath
+							});
 							downloader.StartInfo.UseShellExecute = true;
 							downloader.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
 							downloader.Start();
@@ -274,7 +298,7 @@ namespace ParallelPixivUtil2
 						finally
 						{
 							semaphore.Release();
-							MainLogger.InfoFormat("Donwloading finished: '{0}.p{1}'; waiting for {2} remaining operations.", memberId, fileIndex, Interlocked.Decrement(ref remainingOperationCount));
+							MainLogger.InfoFormat("Donwloading finished (Exit code {0}): '{1}.p{2}'; waiting for {3} remaining operations.", downloader.ExitCode, memberId, fileIndex, Interlocked.Decrement(ref remainingOperationCount));
 						}
 					}));
 				}
@@ -283,9 +307,9 @@ namespace ParallelPixivUtil2
 			await Task.WhenAll(tasks);
 		}
 
-		private static async Task ExtractMemberImages(int totalPageCount, string workingDir, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore, bool pythonSourceFileExists)
+		private static async Task RetrieveMemberImages(ExtractorRecord extractor, string parameters, IDictionary<long, ICollection<MemberPage>> memberPageList, SemaphoreSlim semaphore)
 		{
-			int remaining = totalPageCount;
+			int remaining = extractor.TotalPageCount;
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
@@ -296,16 +320,25 @@ namespace ParallelPixivUtil2
 					{
 						MainLogger.InfoFormat("Extraction started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
 
+						var retriever = new Process();
 						try
 						{
-							var extractor = new Process();
-							extractor.StartInfo.FileName = pythonSourceFileExists ? "python.exe" : $"{workingDir}\\PixivUtil2.exe";
-							extractor.StartInfo.WorkingDirectory = workingDir;
-							extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s 1 {memberId} --sp={page.Page} --ep={page.Page} -x --pipe={IPCSocketAddress} --db=\"databases\\{memberId}.p{page.FileIndex}.db\" -l \"logs\\{memberId}.p{page.FileIndex}.log\" --aria2=\"aria2\\{memberId}.p{page.FileIndex}.txt\"";
-							extractor.StartInfo.UseShellExecute = true;
-							extractor.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-							extractor.Start();
-							extractor.WaitForExit();
+							retriever.StartInfo.FileName = extractor.Executable;
+							retriever.StartInfo.WorkingDirectory = extractor.ExtractorWorkingDir;
+							retriever.StartInfo.Arguments = extractor.ExtraArguments + FormatTokens(parameters, new Dictionary<string, string>
+							{
+								["memberID"] = memberId.ToString(),
+								["page"] = page.Page.ToString(),
+								["fileIndex"] = page.FileIndex.ToString(),
+								["ipcAddress"] = extractor.IPCAddress,
+								["logPath"] = extractor.LogPath,
+								["aria2InputPath"] = extractor.Aria2InputPath,
+								["databasePath"] = extractor.DatabasePath
+							});
+							retriever.StartInfo.UseShellExecute = true;
+							retriever.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+							retriever.Start();
+							retriever.WaitForExit();
 						}
 						catch (Exception ex)
 						{
@@ -314,7 +347,7 @@ namespace ParallelPixivUtil2
 						finally
 						{
 							semaphore.Release();
-							MainLogger.InfoFormat("Extraction finished: '{0}.p{1}' (page {2}); waiting for {3} remaining operations.", memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
+							MainLogger.InfoFormat("Extraction finished (Exit code {0}): '{1}.p{2}' (page {3}); waiting for {4} remaining operations.", retriever.ExitCode, memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
 						}
 					}));
 				}
@@ -323,12 +356,12 @@ namespace ParallelPixivUtil2
 			await Task.WhenAll(tasks);
 		}
 
-		private static IDictionary<long, ICollection<MemberPage>> ParseMemberDataList(out int totalImageCount, out int totalPageCount)
+		private static IDictionary<long, ICollection<MemberPage>> ParseMemberDataList(string memberDataList, out int totalImageCount, out int totalPageCount)
 		{
 			var memberPageList = new Dictionary<long, ICollection<MemberPage>>();
 			totalImageCount = 0;
 			totalPageCount = 0;
-			foreach (string line in File.ReadAllLines(MemberDataListFileName))
+			foreach (string line in File.ReadAllLines(memberDataList))
 			{
 				if (string.IsNullOrWhiteSpace(line))
 					continue;
@@ -359,25 +392,53 @@ namespace ParallelPixivUtil2
 			return memberPageList;
 		}
 
-		private static void ExtractMemberDataList(bool pythonSourceFileExists, string workingDir, string[] memberIds)
+		private static void RetrieveMemberDataList(ExtractorRecord extractor, string parameters, string memberDataFile, string[] memberIds)
 		{
 			try
 			{
-				var extractor = new Process();
-				extractor.StartInfo.FileName = pythonSourceFileExists ? "Python.exe" : $"{workingDir}\\PixivUtil2.exe";
-				extractor.StartInfo.WorkingDirectory = workingDir;
-				extractor.StartInfo.Arguments = $"{(pythonSourceFileExists ? $"{workingDir}\\PixivUtil2.py" : "")} -s q {MemberDataListFileName} {string.Join(' ', memberIds)} -x -l \"logs\\dumpMembers.log\"";
-				extractor.StartInfo.UseShellExecute = true;
-				extractor.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
-				extractor.Start();
-				extractor.WaitForExit();
+				var retriever = new Process();
+				retriever.StartInfo.FileName = extractor.Executable;
+				retriever.StartInfo.WorkingDirectory = extractor.ExtractorWorkingDir;
+				retriever.StartInfo.Arguments = extractor.ExtraArguments + FormatTokens(parameters, new Dictionary<string, string>
+				{
+					["memberDataList"] = memberDataFile,
+					["memberIDs"] = string.Join(' ', memberIds),
+					["logPath"] = extractor.LogPath,
+					["aria2InputPath"] = extractor.Aria2InputPath,
+					["databasePath"] = extractor.DatabasePath
+				});
+				retriever.StartInfo.UseShellExecute = true;
+				retriever.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
+				retriever.Start();
+				retriever.WaitForExit();
 			}
 			catch (Exception ex)
 			{
 				MainLogger.Error("Failed to execute member-data extractor.", ex);
 			}
 		}
+
+		private static string FormatTokens(string format, IDictionary<string, string> tokens)
+		{
+			foreach (KeyValuePair<string, string> token in tokens)
+				format = format.Replace($"${{{token.Key}}}", token.Value);
+			return format;
+		}
 	}
 
 	public sealed record MemberPage(int Page, int FileIndex);
+
+	public sealed record ExtractorRecord(string ExecutableExe, string ExecutablePy, bool PyExists, string ExtractorWorkingDir, string IPCAddress, string LogPath, string Aria2InputPath, string DatabasePath)
+	{
+		public int TotalPageCount
+		{
+			get; set;
+		} = -1;
+
+		public string Executable => PyExists ? "Python.exe" : ExecutableExe;
+
+		public string ExtraArguments => PyExists ? $"{ExecutablePy} " : "";
+	}
+
+	public sealed record DownloaderRecord(int TotalPageCount, string Executable, string ExtractorWorkingDir, string LogPath, string Aria2InputPath, string DatabasePath);
 }
