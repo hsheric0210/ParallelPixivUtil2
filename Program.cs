@@ -298,7 +298,7 @@ namespace ParallelPixivUtil2
 						finally
 						{
 							semaphore.Release();
-							MainLogger.InfoFormat("Donwloading finished (Exit code {0}): '{1}.p{2}'; waiting for {3} remaining operations.", downloader.ExitCode, memberId, fileIndex, Interlocked.Decrement(ref remainingOperationCount));
+							MainLogger.InfoFormat("Downloading finished (Exit code {0}): '{1}.p{2}'; waiting for {3} remaining operations.", downloader.ExitCode, memberId, fileIndex, Interlocked.Decrement(ref remainingOperationCount));
 						}
 					}));
 				}
