@@ -112,8 +112,10 @@ namespace ParallelPixivUtil2
 							IPCLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
 							Task.Run(async () =>
 							{
+								IPCLogger.InfoFormat("{0} | FFmpeg execution is waiting for semaphore...", uidString);
 								await ffmpegSemaphore.WaitAsync();
 
+								IPCLogger.InfoFormat("{0} | FFmpeg execution is in process...", uidString);
 								await Task.Run(() =>
 								{
 									int exitCode = -1;
@@ -132,6 +134,7 @@ namespace ParallelPixivUtil2
 									catch (Exception ex)
 									{
 										exitCode = ex.HResult;
+										IPCLogger.Error(string.Format("{0} | FFmpeg execution failed with exception.", uidString), ex);
 									}
 									finally
 									{
