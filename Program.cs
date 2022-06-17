@@ -12,6 +12,7 @@ namespace ParallelPixivUtil2
 		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
 
 		private static readonly IDictionary<byte[], string> IPCIdentifiers = new Dictionary<byte[], string>();
+		private static readonly IDictionary<int, Task<int>> ffmpegTasks = new Dictionary<int, Task<int>>();
 
 		private static string CurrentPhaseName = "Unknown";
 		private static int ProcessedImageCount;
@@ -97,65 +98,102 @@ namespace ParallelPixivUtil2
 						uidString += $" ({identifier})";
 					switch (group)
 					{
-						case "HS":
+						case IpcConstants.IPC_HANDSHAKE:
+						{
 							IPCLogger.InfoFormat("{0} | IPC Handshake received : '{1}'", uidString, message[0].ConvertToStringUTF8());
 							socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
 							break;
+						}
 
-						case "IDENT":
+						case IpcConstants.IPC_IDENT:
+						{
 							IPCLogger.InfoFormat("{0} | IPC identifier change requested : '{1}'", uidString, message[0].ConvertToStringUTF8());
 							IPCIdentifiers[uidFrame.ToByteArray()] = message[0].ConvertToStringUTF8();
 							socket.Send(uidFrame, group, NetMQFrame.Empty);
 							break;
+						}
 
-						case "FFMPEG":
+						case IpcConstants.IPC_FFMPEG_REQUEST:
+						{
 							IPCLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
-							Task.Run(async () =>
+
+							// Generate task ID
+							int taskID;
+							do
 							{
-								IPCLogger.InfoFormat("{0} | FFmpeg execution is waiting for semaphore...", uidString);
+								taskID = Random.Shared.Next();
+							} while (ffmpegTasks.ContainsKey(taskID));
+
+							ffmpegTasks.Add(taskID, Task.Run(async () =>
+							{
+								IPCLogger.InfoFormat("{0} | FFmpeg execution '{1}' is waiting for semaphore...", uidString, taskID);
 								await ffmpegSemaphore.WaitAsync();
 
-								IPCLogger.InfoFormat("{0} | FFmpeg execution is in process...", uidString);
-								await Task.Run(() =>
+								IPCLogger.InfoFormat("{0} | FFmpeg execution '{1}' is in process...", uidString, taskID);
+
+								int exitCode = -1;
+								try
 								{
-									int exitCode = -1;
-									try
-									{
-										var ffmpeg = new Process();
-										ffmpeg.StartInfo.FileName = config.FFmpegExecutable;
-										ffmpeg.StartInfo.WorkingDirectory = extractorWorkingDirectory;
-										ffmpeg.StartInfo.UseShellExecute = true;
-										foreach (NetMQFrame arg in message)
-											ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToStringUTF8());
-										ffmpeg.Start();
-										ffmpeg.WaitForExit();
-										exitCode = ffmpeg.ExitCode;
-									}
-									catch (Exception ex)
-									{
-										exitCode = ex.HResult;
-										IPCLogger.Error(string.Format("{0} | FFmpeg execution failed with exception.", uidString), ex);
-									}
-									finally
-									{
-										ffmpegSemaphore.Release();
+									var ffmpeg = new Process();
+									ffmpeg.StartInfo.FileName = config.FFmpegExecutable;
+									ffmpeg.StartInfo.WorkingDirectory = extractorWorkingDirectory;
+									ffmpeg.StartInfo.UseShellExecute = true;
+									foreach (NetMQFrame arg in message)
+										ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToStringUTF8());
+									ffmpeg.Start();
+									ffmpeg.WaitForExit();
+									exitCode = ffmpeg.ExitCode;
+								}
+								catch (Exception ex)
+								{
+									exitCode = ex.HResult;
+									IPCLogger.Error(string.Format("{0} | FFmpeg execution failed with exception.", uidString), ex);
+								}
+								finally
+								{
+									ffmpegSemaphore.Release();
 
-										IPCLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
-										socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
-									}
-								});
-							});
+									IPCLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
+									socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
+								}
+								return exitCode;
+							}));
+							socket.Send(uidFrame, group, new NetMQFrame(taskID));
 							break;
+						}
 
-						case "DL":
+						case IpcConstants.IPC_FFMPEG_RESULT:
+						{
+							int taskID = message[0].ConvertToInt32();
+							if (ffmpegTasks.ContainsKey(taskID))
+							{
+								IPCLogger.InfoFormat("{0} | Exit code of FFmpeg execution '{1}' requested.", uidString, taskID);
+								Task.Run(async () =>
+								{
+									socket.Send(uidFrame, group, new NetMQFrame(await ffmpegTasks[taskID]));
+								});
+							}
+							else
+							{
+								IPCLogger.WarnFormat("{0} | Exit code of non-existent FFmpeg execution '{1}' requested.", uidString, taskID);
+								socket.Send(uidFrame, group, new NetMQFrame(-1));
+							}
+							break;
+						}
+
+						case IpcConstants.IPC_DOWNLOADED:
+						{
 							IPCLogger.InfoFormat("{0} | [{1}] Image {2} process result : {3}", uidString, ImageProcessed(), message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
 							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
 							break;
+						}
 
-						case "TITLE":
+						case IpcConstants.IPC_TITLE:
+						{
 							IPCLogger.InfoFormat("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
 							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
 							break;
+						}
 					}
 				});
 
