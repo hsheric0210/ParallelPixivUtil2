@@ -124,6 +124,7 @@ namespace ParallelPixivUtil2
 								taskID = Random.Shared.Next();
 							} while (ffmpegTasks.ContainsKey(taskID));
 
+							// Allocate task
 							ffmpegTasks.Add(taskID, Task.Run(async () =>
 							{
 								IPCLogger.InfoFormat("{0} | FFmpeg execution '{1}' is waiting for semaphore...", uidString, taskID);
