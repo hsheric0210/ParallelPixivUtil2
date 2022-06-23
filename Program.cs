@@ -208,9 +208,7 @@ namespace ParallelPixivUtil2
 								finally
 								{
 									ffmpegSemaphore.Release();
-
 									IPCLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
-									socket.Send(uidFrame, "FFmpeg", new NetMQFrame(exitCode));
 								}
 								return exitCode;
 							}));
@@ -238,18 +236,21 @@ namespace ParallelPixivUtil2
 						{
 							string fileName = Path.GetFullPath(message[0].ConvertToStringUTF8());
 							string data = message[1].ConvertToStringUTF8();
-							int error = 0;
-							try
+							Task.Run(async () =>
 							{
-								IPCLogger.InfoFormat("{0} | Aria2 input file updated: {1}", uidString, fileName);
-								File.AppendAllText(fileName, data, Encoding.UTF8);
-							}
-							catch (Exception ex)
-							{
-								error = ex.HResult;
-								IPCLogger.Error(string.Format("{0} | Aria2 input file update failed with exception.", uidString), ex);
-							}
-							socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(error)));
+								int error = 0;
+								try
+								{
+									IPCLogger.InfoFormat("{0} | Aria2 input file updated: {1}", uidString, fileName);
+									await File.AppendAllTextAsync(fileName, data, Encoding.UTF8);
+								}
+								catch (Exception ex)
+								{
+									error = ex.HResult;
+									IPCLogger.Error(string.Format("{0} | Aria2 input file update failed with exception.", uidString), ex);
+								}
+								socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(error)));
+							});
 							break;
 						}
 					}
