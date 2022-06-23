@@ -48,8 +48,10 @@
 		private const string DefaultMemberDataListFile = "memberdata.txt";
 		private const string ListFileKey = "ListFile";
 		private const string DefaultListFile = "list.txt";
-		private const string IPCPortKey = "IPCPort";
-		private const int DefaultIPCPort = 6974;
+		private const string IPCCommPortKey = "IPCCommunicatePort";
+		private const int DefaultIPCCommPort = 6974;
+		private const string IPCTaskPortKey = "IPCTaskPort";
+		private const int DefaultIPCTaskPort = 7469;
 
 		private const string LogPathKey = "LogFolder";
 		private const string DefaultLogPath = "logs";
@@ -84,7 +86,8 @@
 
 		public string ListFile => ParsePath(ListFileKey, DefaultListFile);
 
-		public int IPCPort => ParseInt(IPCPortKey, DefaultIPCPort);
+		public int IPCCommPort => ParseInt(IPCCommPortKey, DefaultIPCCommPort);
+		public int IPCTaskPort => ParseInt(IPCTaskPortKey, DefaultIPCTaskPort);
 
 		public string ExtractorParameters => ParseString(ExtractorParametersKey, DefaultExtractorParameters);
 
@@ -150,7 +153,7 @@
 			Ini.Write(MaxImagesPerPageKey, DefaultMaxImagesPerPage);
 			Ini.Write(MemberDataListFileKey, DefaultMemberDataListFile);
 			Ini.Write(ListFileKey, DefaultListFile);
-			Ini.Write(IPCPortKey, DefaultIPCPort);
+			Ini.Write(IPCCommPortKey, DefaultIPCCommPort);
 
 			Ini.Write(LogPathKey, DefaultLogPath);
 			Ini.Write(Aria2InputPathKey, DefaultAria2InputPath);

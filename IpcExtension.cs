@@ -20,7 +20,7 @@ namespace ParallelPixivUtil2
 					callback(args.Socket, msg[0], msg[2].ConvertToString(Encoding.UTF8).ToUpperInvariant(), msg.Skip(3).ToArray());
 			};
 
-			Task.Run(() => poller.Run());
+			poller.RunAsync("IPCMessagePoller", true);
 
 			return new IpcConnection(socket, poller);
 		}

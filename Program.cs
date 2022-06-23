@@ -1,6 +1,7 @@
 ﻿using log4net;
 using NetMQ;
 using System.Diagnostics;
+using System.Text;
 
 namespace ParallelPixivUtil2
 {
@@ -60,13 +61,14 @@ namespace ParallelPixivUtil2
 		{
 			Console.WriteLine("ParallelPixivUtil2 - PixivUtil2 with parallel download support");
 
-			bool onlyPostProcessing = args.Length > 0 && args[0].Equals("onlypp", StringComparison.InvariantCultureIgnoreCase);
+			bool onlyPostProcessing = args.Length > 0 && args[0].Equals("onlypp", StringComparison.OrdinalIgnoreCase);
 
 			var config = new Config();
 
 			string extractorExe = config.ExtractorExecutable;
 			string extractorPy = config.ExtractorScript;
-			string ipcAddress = $"tcp://localhost:{config.IPCPort}";
+			string ipcCommAddr = $"tcp://localhost:{config.IPCCommPort}";
+			string ipcTaskAddr = $"tcp://localhost:{config.IPCTaskPort}";
 			var pythonSourceFileExists = File.Exists(extractorPy);
 			if (!pythonSourceFileExists && RequireExists(extractorExe))
 				return 1;
@@ -91,21 +93,33 @@ namespace ParallelPixivUtil2
 			try
 			{
 				var ffmpegSemaphore = new SemaphoreSlim(config.MaxFFmpegParallellism);
-				using IpcConnection socket = IpcExtension.InitializeIPCSocket(ipcAddress, (socket, uidFrame, group, message) =>
+
+				// Channel for communication, notification and task requesting.
+				using IpcConnection commSocket = IpcExtension.InitializeIPCSocket(ipcCommAddr, (socket, uidFrame, group, message) =>
 				{
 					string uidString = uidFrame.ToUniqueIDString();
 					if (!IPCIdentifiers.TryGetValue(uidFrame.ToByteArray(), out string? identifier))
 						uidString += $" ({identifier})";
 					switch (group)
 					{
-						case IpcConstants.IPC_HANDSHAKE:
+						case IpcConstants.HANDSHAKE:
 						{
 							IPCLogger.InfoFormat("{0} | IPC Handshake received : '{1}'", uidString, message[0].ConvertToStringUTF8());
-							socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
+							string pipeType = message[1].ConvertToStringUTF8();
+							if (pipeType.Equals("Comm", StringComparison.OrdinalIgnoreCase))
+							{
+								socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
+							}
+							else
+							{
+								IPCLogger.FatalFormat("Unexpected handshake: {0} - Comm expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType);
+								socket.Send(uidFrame, group, new NetMQFrame("ERROR"));
+							}
+
 							break;
 						}
 
-						case IpcConstants.IPC_IDENT:
+						case IpcConstants.NOTIFY_IDENT:
 						{
 							IPCLogger.InfoFormat("{0} | IPC identifier change requested : '{1}'", uidString, message[0].ConvertToStringUTF8());
 							IPCIdentifiers[uidFrame.ToByteArray()] = message[0].ConvertToStringUTF8();
@@ -113,7 +127,48 @@ namespace ParallelPixivUtil2
 							break;
 						}
 
-						case IpcConstants.IPC_FFMPEG_REQUEST:
+						case IpcConstants.NOTIFY_DOWNLOADED:
+						{
+							IPCLogger.InfoFormat("{0} | [{1}] Image {2} process result : {3}", uidString, ImageProcessed(), message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
+							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
+							break;
+						}
+
+						case IpcConstants.NOTIFY_TITLE:
+						{
+							IPCLogger.InfoFormat("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
+							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
+							break;
+						}
+					}
+				});
+
+				// Socket for long-running or blocking tasks
+				using IpcConnection taskRequestSocket = IpcExtension.InitializeIPCSocket(ipcTaskAddr, (socket, uidFrame, group, message) =>
+				{
+					string uidString = uidFrame.ToUniqueIDString();
+					if (!IPCIdentifiers.TryGetValue(uidFrame.ToByteArray(), out string? identifier))
+						uidString += $" ({identifier})";
+					switch (group)
+					{
+						case IpcConstants.HANDSHAKE:
+						{
+							IPCLogger.InfoFormat("{0} | IPC Handshake received : '{1}'", uidString, message[0].ConvertToStringUTF8());
+							string pipeType = message[1].ConvertToStringUTF8();
+							if (pipeType.Equals("Task", StringComparison.OrdinalIgnoreCase))
+							{
+								socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
+							}
+							else
+							{
+								IPCLogger.FatalFormat("Unexpected handshake: {0} - Task expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType);
+								socket.Send(uidFrame, group, new NetMQFrame("ERROR"));
+							}
+
+							break;
+						}
+
+						case IpcConstants.NOTIFY_FFMPEG:
 						{
 							IPCLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
 
@@ -159,40 +214,42 @@ namespace ParallelPixivUtil2
 								}
 								return exitCode;
 							}));
-							socket.Send(uidFrame, group, new NetMQFrame(taskID));
+							socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(taskID)));
 							break;
 						}
 
-						case IpcConstants.IPC_FFMPEG_RESULT:
+						case IpcConstants.TASK_FFMPEG_RESULT:
 						{
-							int taskID = message[0].ConvertToInt32();
+							int taskID = BitConverter.ToInt32(message[0].Buffer);
 							if (ffmpegTasks.ContainsKey(taskID))
 							{
 								IPCLogger.InfoFormat("{0} | Exit code of FFmpeg execution '{1}' requested.", uidString, taskID);
-								Task.Run(async () =>
-								{
-									socket.Send(uidFrame, group, new NetMQFrame(await ffmpegTasks[taskID]));
-								});
+								Task.Run(async () => socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(await ffmpegTasks[taskID]))));
 							}
 							else
 							{
 								IPCLogger.WarnFormat("{0} | Exit code of non-existent FFmpeg execution '{1}' requested.", uidString, taskID);
-								socket.Send(uidFrame, group, new NetMQFrame(-1));
+								socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(-1)));
 							}
 							break;
 						}
 
-						case IpcConstants.IPC_DOWNLOADED:
+						case IpcConstants.TASK_ARIA2:
 						{
-							IPCLogger.InfoFormat("{0} | [{1}] Image {2} process result : {3}", uidString, ImageProcessed(), message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
-							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
-							break;
-						}
-
-						case IpcConstants.IPC_TITLE:
-						{
-							IPCLogger.InfoFormat("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
-							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
+							string fileName = Path.GetFullPath(message[0].ConvertToStringUTF8());
+							string data = message[1].ConvertToStringUTF8();
+							int error = 0;
+							try
+							{
+								IPCLogger.InfoFormat("{0} | Aria2 input file updated: {1}", uidString, fileName);
+								File.AppendAllText(fileName, data, Encoding.UTF8);
+							}
+							catch (Exception ex)
+							{
+								error = ex.HResult;
+								IPCLogger.Error(string.Format("{0} | Aria2 input file update failed with exception.", uidString), ex);
+							}
+							socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(error)));
 							break;
 						}
 					}
@@ -205,7 +262,7 @@ namespace ParallelPixivUtil2
 				MainLogger.InfoFormat("Reading all lines of {0}", listFile);
 				string[] memberIds = File.ReadAllLines(listFile);
 
-				var extractor = new ExtractorRecord(extractorExe, extractorPy, pythonSourceFileExists, extractorWorkingDirectory, ipcAddress, config.LogPath, config.Aria2InputPath, config.DatabasePath);
+				var extractor = new ExtractorRecord(extractorExe, extractorPy, pythonSourceFileExists, extractorWorkingDirectory, ipcCommAddr, ipcTaskAddr, config.LogPath, config.Aria2InputPath, config.DatabasePath);
 
 				// Extract URLs
 				RetrieveMemberDataList(extractor, config.MemberDataListParameters, config.MemberDataListFile, memberIds);
@@ -276,7 +333,7 @@ namespace ParallelPixivUtil2
 								["memberID"] = memberId.ToString(),
 								["page"] = page.Page.ToString(),
 								["fileIndex"] = page.FileIndex.ToString(),
-								["ipcAddress"] = extractor.IPCAddress,
+								["ipcAddress"] = extractor.IPCCommAddress + '|' + extractor.IPCTaskAddress,
 								["logPath"] = extractor.LogPath,
 								["aria2InputPath"] = extractor.Aria2InputPath,
 								["databasePath"] = extractor.DatabasePath
@@ -372,7 +429,7 @@ namespace ParallelPixivUtil2
 								["memberID"] = memberId.ToString(),
 								["page"] = page.Page.ToString(),
 								["fileIndex"] = page.FileIndex.ToString(),
-								["ipcAddress"] = extractor.IPCAddress,
+								["ipcAddress"] = extractor.IPCCommAddress + '|' + extractor.IPCTaskAddress,
 								["logPath"] = extractor.LogPath,
 								["aria2InputPath"] = extractor.Aria2InputPath,
 								["databasePath"] = extractor.DatabasePath
@@ -470,7 +527,7 @@ namespace ParallelPixivUtil2
 
 	public sealed record MemberPage(int Page, int FileIndex);
 
-	public sealed record ExtractorRecord(string ExecutableExe, string ExecutablePy, bool PyExists, string ExtractorWorkingDir, string IPCAddress, string LogPath, string Aria2InputPath, string DatabasePath)
+	public sealed record ExtractorRecord(string ExecutableExe, string ExecutablePy, bool PyExists, string ExtractorWorkingDir, string IPCCommAddress, string IPCTaskAddress, string LogPath, string Aria2InputPath, string DatabasePath)
 	{
 		public int TotalPageCount
 		{
