@@ -108,12 +108,12 @@ namespace ParallelPixivUtil2
 							string pipeType = message[1].ConvertToStringUTF8();
 							if (pipeType.Equals("Comm", StringComparison.OrdinalIgnoreCase))
 							{
-								socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
+								socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							}
 							else
 							{
 								IPCLogger.FatalFormat("Unexpected handshake: {0} - Comm expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType);
-								socket.Send(uidFrame, group, new NetMQFrame("ERROR"));
+								socket.Send(uidFrame, group, IpcConstants.RETURN_ERROR);
 							}
 
 							break;
@@ -123,21 +123,21 @@ namespace ParallelPixivUtil2
 						{
 							IPCLogger.InfoFormat("{0} | IPC identifier change requested : '{1}'", uidString, message[0].ConvertToStringUTF8());
 							IPCIdentifiers[uidFrame.ToByteArray()] = message[0].ConvertToStringUTF8();
-							socket.Send(uidFrame, group, NetMQFrame.Empty);
+							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							break;
 						}
 
 						case IpcConstants.NOTIFY_DOWNLOADED:
 						{
 							IPCLogger.InfoFormat("{0} | [{1}] Image {2} process result : {3}", uidString, ImageProcessed(), message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
-							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
+							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							break;
 						}
 
 						case IpcConstants.NOTIFY_TITLE:
 						{
 							IPCLogger.InfoFormat("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
-							socket.Send(uidFrame, group, NetMQFrame.Empty); // Return with empty response
+							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							break;
 						}
 					}
@@ -157,18 +157,18 @@ namespace ParallelPixivUtil2
 							string pipeType = message[1].ConvertToStringUTF8();
 							if (pipeType.Equals("Task", StringComparison.OrdinalIgnoreCase))
 							{
-								socket.Send(uidFrame, group, new NetMQFrame(ProgramName));
+								socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							}
 							else
 							{
 								IPCLogger.FatalFormat("Unexpected handshake: {0} - Task expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType);
-								socket.Send(uidFrame, group, new NetMQFrame("ERROR"));
+								socket.Send(uidFrame, group, IpcConstants.RETURN_ERROR);
 							}
 
 							break;
 						}
 
-						case IpcConstants.NOTIFY_FFMPEG:
+						case IpcConstants.TASK_FFMPEG_REQUEST:
 						{
 							IPCLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
 
