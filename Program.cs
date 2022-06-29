@@ -1,5 +1,6 @@
 ﻿using log4net;
 using NetMQ;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 
@@ -13,7 +14,10 @@ namespace ParallelPixivUtil2
 		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
 
 		private static readonly IDictionary<byte[], string> IPCIdentifiers = new Dictionary<byte[], string>();
-		private static readonly IDictionary<int, Task<int>> ffmpegTasks = new Dictionary<int, Task<int>>();
+		private static readonly IDictionary<int, Task<int>> FFmpegTasks = new Dictionary<int, Task<int>>();
+		private static readonly IDictionary<string, IList<string>> DownloadInputQueue = new ConcurrentDictionary<string, IList<string>>();
+
+		private static Timer? DownloadInputQueueFlusher;
 
 		private static string CurrentPhaseName = "Unknown";
 		private static int ProcessedImageCount;
@@ -21,6 +25,41 @@ namespace ParallelPixivUtil2
 
 		private Program()
 		{
+		}
+
+		private static void FlushDownloadInputQueue()
+		{
+			MainLogger.Debug("Processing queued download input list...");
+			var watch = new Stopwatch();
+			watch.Start();
+
+			var CopyQueue = new Dictionary<string, IList<string>>(DownloadInputQueue);
+			DownloadInputQueue.Clear();
+
+			Task.WhenAll(CopyQueue.Select((pair) =>
+				Task.Run(() =>
+				{
+					var builder = new StringBuilder();
+					foreach (var item in pair.Value)
+					{
+						builder.Append(item);
+					}
+					File.AppendAllText(pair.Key, builder.ToString());
+				}))).Wait();
+
+			watch.Stop();
+			MainLogger.DebugFormat("Processed queued download input list: Took {0}ms", watch.ElapsedMilliseconds);
+		}
+
+		private static void BeginFlushDownloadInputQueueTimer(long delay, long period) => DownloadInputQueueFlusher = new Timer(_ => FlushDownloadInputQueue(), null, delay, period);
+
+		private static void EndFlushDownloadInputQueueTimer()
+		{
+			if (DownloadInputQueueFlusher == null)
+				return;
+
+			DownloadInputQueueFlusher.Dispose();
+			FlushDownloadInputQueue();
 		}
 
 		private static void PhaseChange(string phaseName, int totalImageCount)
@@ -177,10 +216,10 @@ namespace ParallelPixivUtil2
 							do
 							{
 								taskID = Random.Shared.Next();
-							} while (ffmpegTasks.ContainsKey(taskID));
+							} while (FFmpegTasks.ContainsKey(taskID));
 
 							// Allocate task
-							ffmpegTasks.Add(taskID, Task.Run(async () =>
+							FFmpegTasks.Add(taskID, Task.Run(async () =>
 							{
 								IPCLogger.InfoFormat("{0} | FFmpeg execution '{1}' is waiting for semaphore...", uidString, taskID);
 								await ffmpegSemaphore.WaitAsync();
@@ -219,10 +258,10 @@ namespace ParallelPixivUtil2
 						case IpcConstants.TASK_FFMPEG_RESULT:
 						{
 							int taskID = BitConverter.ToInt32(message[0].Buffer);
-							if (ffmpegTasks.ContainsKey(taskID))
+							if (FFmpegTasks.ContainsKey(taskID))
 							{
 								IPCLogger.InfoFormat("{0} | Exit code of FFmpeg execution '{1}' requested.", uidString, taskID);
-								Task.Run(async () => socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(await ffmpegTasks[taskID]))));
+								Task.Run(async () => socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(await FFmpegTasks[taskID]))));
 							}
 							else
 							{
@@ -235,22 +274,14 @@ namespace ParallelPixivUtil2
 						case IpcConstants.TASK_ARIA2:
 						{
 							string fileName = Path.GetFullPath(message[0].ConvertToStringUTF8());
-							string data = message[1].ConvertToStringUTF8();
-							Task.Run(async () =>
+							if (!DownloadInputQueue.TryGetValue(fileName, out IList<string>? list))
 							{
-								int error = 0;
-								try
-								{
-									IPCLogger.InfoFormat("{0} | Aria2 input file updated: {1}", uidString, fileName);
-									await File.AppendAllTextAsync(fileName, data, Encoding.UTF8);
-								}
-								catch (Exception ex)
-								{
-									error = ex.HResult;
-									IPCLogger.Error(string.Format("{0} | Aria2 input file update failed with exception.", uidString), ex);
-								}
-								socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(error)));
-							});
+								list = new List<string>();
+								DownloadInputQueue.Add(fileName, list);
+							}
+
+							list.Add(message[1].ConvertToStringUTF8());
+							socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(0)));
 							break;
 						}
 					}
@@ -282,10 +313,12 @@ namespace ParallelPixivUtil2
 				{
 					MainLogger.Info("Extracting member images.");
 					PhaseChange("Extraction", totalImageCount);
+					BeginFlushDownloadInputQueueTimer(config.DownloadInputDelay, config.DownloadInputPeriod);
 					using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
 					{
 						await RetrieveMemberImages(extractor, config.ExtractorParameters, memberPageList, semaphore);
 					}
+					EndFlushDownloadInputQueueTimer();
 
 					MainLogger.Info("Start downloading.");
 					Console.Title = "Downloading phase";
