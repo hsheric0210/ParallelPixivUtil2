@@ -1,5 +1,6 @@
 ﻿using log4net;
 using NetMQ;
+using ShellProgressBar;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
@@ -40,7 +41,7 @@ namespace ParallelPixivUtil2
 				Task.Run(() =>
 				{
 					var builder = new StringBuilder();
-					foreach (var item in pair.Value)
+					foreach (string? item in pair.Value)
 					{
 						builder.Append(item);
 					}
@@ -96,9 +97,23 @@ namespace ParallelPixivUtil2
 			}
 		}
 
+		private static readonly ProgressBarOptions DefaultProgressBarOpts = new()
+		{
+			BackgroundCharacter = '-',
+			ProgressCharacter = '=',
+			ForegroundColor = ConsoleColor.Blue,
+			ForegroundColorError = ConsoleColor.Red,
+			BackgroundColor = ConsoleColor.Yellow,
+			CollapseWhenFinished = false
+		};
+
 		public static async Task<int> Main(string[] args)
 		{
 			Console.WriteLine("ParallelPixivUtil2 - PixivUtil2 with parallel download support");
+
+
+			using var progressBar = new ProgressBar(5, "Preparing...", DefaultProgressBarOpts);
+			ProgressBarCompatibleConsoleAppender.ProgressBar = progressBar;
 
 			bool onlyPostProcessing = args.Length > 0 && args[0].Equals("onlypp", StringComparison.OrdinalIgnoreCase);
 
@@ -108,7 +123,7 @@ namespace ParallelPixivUtil2
 			string extractorPy = config.ExtractorScript;
 			string ipcCommAddr = $"tcp://localhost:{config.IPCCommPort}";
 			string ipcTaskAddr = $"tcp://localhost:{config.IPCTaskPort}";
-			var pythonSourceFileExists = File.Exists(extractorPy);
+			bool pythonSourceFileExists = File.Exists(extractorPy);
 			if (!pythonSourceFileExists && RequireExists(extractorExe))
 				return 1;
 
@@ -123,12 +138,16 @@ namespace ParallelPixivUtil2
 			if (RequireExists(listFile) || RequireExists($"{extractorWorkingDirectory}\\config.ini") || RequireExists(config.DownloaderExecutable))
 				return 1;
 
+			IndeterminateChildProgressBar threadPoolSetupProgressBar = progressBar.SpawnIndeterminate("Setting thread pool worker counts", DefaultProgressBarOpts);
 			int workerCount = Math.Max(config.MaxExtractorParallellism, Math.Max(config.MaxDownloaderParallellism, config.MaxPostprocessorParallellism)) + config.MaxFFmpegParallellism + 4;
 			if (!ThreadPool.SetMinThreads(workerCount, workerCount))
 				MainLogger.Warn("Failed to set min thread pool workers.");
 			if (!ThreadPool.SetMaxThreads(workerCount, workerCount))
 				MainLogger.Warn("Failed to set max thread pool workers.");
+			threadPoolSetupProgressBar.Finished();
+			progressBar.Tick();
 
+			IndeterminateChildProgressBar ipcSetupProgressBar = progressBar.SpawnIndeterminate("Initializing IPC sockets: Communication socket", DefaultProgressBarOpts);
 			try
 			{
 				var ffmpegSemaphore = new SemaphoreSlim(config.MaxFFmpegParallellism);
@@ -181,6 +200,7 @@ namespace ParallelPixivUtil2
 						}
 					}
 				});
+				ipcSetupProgressBar.Message = "Initializing IPC sockets: Task request socket";
 
 				// Socket for long-running or blocking tasks
 				using IpcConnection taskRequestSocket = IpcExtension.InitializeIPCSocket(ipcTaskAddr, (socket, uidFrame, group, message) =>
@@ -286,18 +306,27 @@ namespace ParallelPixivUtil2
 						}
 					}
 				});
+				ipcSetupProgressBar.Finished();
+				progressBar.Tick();
 
 				CreateDirectoryIfNotExists(config.LogPath);
 				CreateDirectoryIfNotExists(config.Aria2InputPath);
 				CreateDirectoryIfNotExists(config.DatabasePath);
 
+				IndeterminateChildProgressBar readListProgressBar = progressBar.SpawnIndeterminate("Reading al lines of " + listFile, DefaultProgressBarOpts);
 				MainLogger.InfoFormat("Reading all lines of {0}", listFile);
 				string[] memberIds = File.ReadAllLines(listFile);
+				readListProgressBar.Finished();
+				progressBar.Tick();
 
 				var extractor = new ExtractorRecord(extractorExe, extractorPy, pythonSourceFileExists, extractorWorkingDirectory, ipcCommAddr, ipcTaskAddr, config.LogPath, config.Aria2InputPath, config.DatabasePath);
 
+				IndeterminateChildProgressBar retrieveMemberDataProgressBar = progressBar.SpawnIndeterminate("Retrieveing member data", DefaultProgressBarOpts);
+
 				// Extract URLs
 				RetrieveMemberDataList(extractor, config.MemberDataListParameters, config.MemberDataListFile, memberIds);
+				retrieveMemberDataProgressBar.Finished();
+				progressBar.Tick();
 
 				if (!File.Exists(config.MemberDataListFile))
 				{
@@ -305,7 +334,16 @@ namespace ParallelPixivUtil2
 					return 1;
 				}
 
+				IndeterminateChildProgressBar parseMemberDataProgressBar = progressBar.SpawnIndeterminate("Parsing member data", DefaultProgressBarOpts);
+
 				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(config.MemberDataListFile, out int totalImageCount, out int totalPageCount);
+				parseMemberDataProgressBar.Finished();
+				progressBar.Tick();
+
+				await Task.Delay(5000);
+
+				return 0;
+
 				extractor.TotalPageCount = totalPageCount;
 				var downloader = new DownloaderRecord(totalPageCount, config.DownloaderExecutable, extractorWorkingDirectory, config.LogPath, config.Aria2InputPath, config.DatabasePath);
 
@@ -514,7 +552,7 @@ namespace ParallelPixivUtil2
 						memberPageList[memberId].Add(new MemberPage(i, pageCount - i + 1));
 					totalPageCount += pageCount;
 					totalImageCount += memberTotalImages;
-					MainLogger.InfoFormat("Member {0} has {1} images -> {2} pages.", memberId, memberTotalImages, pageCount);
+					MainLogger.DebugFormat("Member {0} has {1} images -> {2} pages.", memberId, memberTotalImages, pageCount);
 				}
 				else
 				{
