@@ -21,6 +21,10 @@
 		private const string DefaultDownloaderLocation = "Aria2c.exe";
 		private const string DownloaderParametersKey = "DownloaderParameters";
 		private const string DefaultDownloaderParameters = "-i\"${aria2InputPath}\\${memberID}.p${fileIndex}.txt\" -l\"${logPath}\\aria2.${memberID}.p${fileIndex}.log\" -j16 -x2 -m0 -Rtrue --allow-overwrite=true --auto-file-renaming=false --auto-save-interval=15 --conditional-get=true --retry-wait=10 --no-file-allocation-limit=2M";
+		private const string DownloadInputDelayKey = "DownloadInputFlushDelay";
+		private const int DefaultDownloadInputDelay = 1000;
+		private const string DownloadInputPeriodKey = "DownloadInputFlushPeriod";
+		private const int DefaultDownloadInputPeriod = 10000;
 
 		// Extractor
 
@@ -48,8 +52,10 @@
 		private const string DefaultMemberDataListFile = "memberdata.txt";
 		private const string ListFileKey = "ListFile";
 		private const string DefaultListFile = "list.txt";
-		private const string IPCPortKey = "IPCPort";
-		private const int DefaultIPCPort = 6974;
+		private const string IPCCommPortKey = "IPCCommunicatePort";
+		private const int DefaultIPCCommPort = 6974;
+		private const string IPCTaskPortKey = "IPCTaskPort";
+		private const int DefaultIPCTaskPort = 7469;
 
 		private const string LogPathKey = "LogFolder";
 		private const string DefaultLogPath = "logs";
@@ -84,7 +90,9 @@
 
 		public string ListFile => ParsePath(ListFileKey, DefaultListFile);
 
-		public int IPCPort => ParseInt(IPCPortKey, DefaultIPCPort);
+		public int IPCCommPort => ParseInt(IPCCommPortKey, DefaultIPCCommPort);
+
+		public int IPCTaskPort => ParseInt(IPCTaskPortKey, DefaultIPCTaskPort);
 
 		public string ExtractorParameters => ParseString(ExtractorParametersKey, DefaultExtractorParameters);
 
@@ -97,6 +105,10 @@
 		public string Aria2InputPath => ParsePath(Aria2InputPathKey, DefaultAria2InputPath);
 
 		public string DatabasePath => ParsePath(DatabasePathKey, DefaultDatabasePath);
+
+		public int DownloadInputDelay => ParseInt(DownloadInputDelayKey, DefaultDownloadInputDelay);
+
+		public int DownloadInputPeriod => ParseInt(DownloadInputPeriodKey, DefaultDownloadInputPeriod);
 
 		public Config()
 		{
@@ -150,7 +162,7 @@
 			Ini.Write(MaxImagesPerPageKey, DefaultMaxImagesPerPage);
 			Ini.Write(MemberDataListFileKey, DefaultMemberDataListFile);
 			Ini.Write(ListFileKey, DefaultListFile);
-			Ini.Write(IPCPortKey, DefaultIPCPort);
+			Ini.Write(IPCCommPortKey, DefaultIPCCommPort);
 
 			Ini.Write(LogPathKey, DefaultLogPath);
 			Ini.Write(Aria2InputPathKey, DefaultAria2InputPath);
