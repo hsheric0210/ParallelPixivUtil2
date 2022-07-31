@@ -1,16 +1,16 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <StartupObject>ParallelPixivUtil2.Program</StartupObject>
     <Authors>hsheric0210</Authors>
     <Description>Run PixivUtil2 in parallel!</Description>
     <PackageId>ParallelPixivUtil2</PackageId>
     <Product>Parallel PixivUtil2</Product>
     <ApplicationIcon>icon2.ico</ApplicationIcon>
+	<UseWPF>true</UseWPF>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">

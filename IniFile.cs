@@ -1,7 +1,7 @@
 ﻿using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
-using System;
+using System.IO;
 
 // https://stackoverflow.com/questions/217902/reading-writing-an-ini-file
 namespace ParallelPixivUtil2

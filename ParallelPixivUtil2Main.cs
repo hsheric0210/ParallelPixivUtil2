@@ -3,12 +3,13 @@ using NetMQ;
 using ShellProgressBar;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 
 // TODO: Remove ShellProgressBar; Convert to WPF
 namespace ParallelPixivUtil2
 {
-	public sealed class Program
+	public sealed class ParallelPixivUtil2Main
 	{
 		public const string ProgramName = "ParallelPixivUtil2";
 
@@ -27,7 +28,7 @@ namespace ParallelPixivUtil2
 		private static int ProcessedImageCount;
 		private static int TotalImageCount;
 
-		private Program()
+		private ParallelPixivUtil2Main()
 		{
 		}
 

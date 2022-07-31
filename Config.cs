@@ -1,4 +1,6 @@
-﻿namespace ParallelPixivUtil2
+﻿using System.IO;
+
+namespace ParallelPixivUtil2
 {
 	public class Config
 	{
