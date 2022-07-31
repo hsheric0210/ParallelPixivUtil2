@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
 
+// TODO: Remove ShellProgressBar; Convert to WPF
 namespace ParallelPixivUtil2
 {
 	public sealed class Program
@@ -15,6 +16,8 @@ namespace ParallelPixivUtil2
 		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
 
 		private static readonly IDictionary<byte[], string> IPCIdentifiers = new Dictionary<byte[], string>();
+		private static readonly IDictionary<byte[], ChildProgressBar> IPCProgressBars = new Dictionary<byte[], ChildProgressBar>();
+		private static readonly IDictionary<string, string> IPCProgressBarMessages = new Dictionary<string, string>();
 		private static readonly IDictionary<int, Task<int>> FFmpegTasks = new Dictionary<int, Task<int>>();
 		private static readonly IDictionary<string, IList<string>> DownloadInputQueue = new ConcurrentDictionary<string, IList<string>>();
 
@@ -31,6 +34,8 @@ namespace ParallelPixivUtil2
 		private static void FlushDownloadInputQueue()
 		{
 			MainLogger.Debug("Processing queued download input list...");
+			var bar = ProgressBarUtils.SpawnIndeterminateChild("Flushing aria2 input buffer");
+
 			var watch = new Stopwatch();
 			watch.Start();
 
@@ -50,6 +55,7 @@ namespace ParallelPixivUtil2
 
 			watch.Stop();
 			MainLogger.DebugFormat("Processed queued download input list: Took {0}ms", watch.ElapsedMilliseconds);
+			bar?.Finished();
 		}
 
 		private static void BeginFlushDownloadInputQueueTimer(long delay, long period) => DownloadInputQueueFlusher = new Timer(_ => FlushDownloadInputQueue(), null, delay, period);
@@ -97,23 +103,11 @@ namespace ParallelPixivUtil2
 			}
 		}
 
-		private static readonly ProgressBarOptions DefaultProgressBarOpts = new()
-		{
-			BackgroundCharacter = '-',
-			ProgressCharacter = '=',
-			ForegroundColor = ConsoleColor.Blue,
-			ForegroundColorError = ConsoleColor.Red,
-			BackgroundColor = ConsoleColor.Yellow,
-			CollapseWhenFinished = false
-		};
-
 		public static async Task<int> Main(string[] args)
 		{
 			Console.WriteLine("ParallelPixivUtil2 - PixivUtil2 with parallel download support");
 
-
-			using var progressBar = new ProgressBar(5, "Preparing...", DefaultProgressBarOpts);
-			ProgressBarCompatibleConsoleAppender.ProgressBar = progressBar;
+			ProgressBarUtils.SetGlobal(5, "Preparing");
 
 			bool onlyPostProcessing = args.Length > 0 && args[0].Equals("onlypp", StringComparison.OrdinalIgnoreCase);
 
@@ -138,20 +132,23 @@ namespace ParallelPixivUtil2
 			if (RequireExists(listFile) || RequireExists($"{extractorWorkingDirectory}\\config.ini") || RequireExists(config.DownloaderExecutable))
 				return 1;
 
-			IndeterminateChildProgressBar threadPoolSetupProgressBar = progressBar.SpawnIndeterminate("Setting thread pool worker counts", DefaultProgressBarOpts);
+			ProgressBarUtils.TickGlobal("Thread-pool setup");
 			int workerCount = Math.Max(config.MaxExtractorParallellism, Math.Max(config.MaxDownloaderParallellism, config.MaxPostprocessorParallellism)) + config.MaxFFmpegParallellism + 4;
-			if (!ThreadPool.SetMinThreads(workerCount, workerCount))
+			if (ThreadPool.SetMinThreads(workerCount, workerCount))
+				MainLogger.Info($"Min thread pool workers: {workerCount}");
+			else
 				MainLogger.Warn("Failed to set min thread pool workers.");
-			if (!ThreadPool.SetMaxThreads(workerCount, workerCount))
-				MainLogger.Warn("Failed to set max thread pool workers.");
-			threadPoolSetupProgressBar.Finished();
-			progressBar.Tick();
 
-			IndeterminateChildProgressBar ipcSetupProgressBar = progressBar.SpawnIndeterminate("Initializing IPC sockets: Communication socket", DefaultProgressBarOpts);
+			if (ThreadPool.SetMaxThreads(workerCount, workerCount))
+				MainLogger.Info($"Max thread pool workers: {workerCount}");
+			else
+				MainLogger.Warn("Failed to set max thread pool workers.");
+
 			try
 			{
 				var ffmpegSemaphore = new SemaphoreSlim(config.MaxFFmpegParallellism);
 
+				ProgressBarUtils.TickGlobal("IPC communication socket initialization");
 				// Channel for communication, notification and task requesting.
 				using IpcConnection commSocket = IpcExtension.InitializeIPCSocket(ipcCommAddr, (socket, uidFrame, group, message) =>
 				{
@@ -162,45 +159,56 @@ namespace ParallelPixivUtil2
 					{
 						case IpcConstants.HANDSHAKE:
 						{
-							IPCLogger.InfoFormat("{0} | IPC Handshake received : '{1}'", uidString, message[0].ConvertToStringUTF8());
+							string newIdentifier = message[0].ConvertToStringUTF8();
+							IPCLogger.DebugFormat("{0} | IPC Handshake received : '{1}'", uidString, newIdentifier);
 							string pipeType = message[1].ConvertToStringUTF8();
 							if (pipeType.Equals("Comm", StringComparison.OrdinalIgnoreCase))
 							{
+								IPCIdentifiers[uidFrame.ToByteArray()] = newIdentifier;
+								var bar = ProgressBarUtils.SpawnChild(config.MaxImagesPerPage, IPCProgressBarMessages[newIdentifier]);
+								if (bar != null)
+									IPCProgressBars[uidFrame.ToByteArray()] = bar;
 								socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							}
 							else
 							{
-								IPCLogger.FatalFormat("Unexpected handshake: {0} - Comm expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType);
+								IPCLogger.FatalFormat("Unexpected handshake '{0}' from {1} - Comm expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType, uidString);
 								socket.Send(uidFrame, group, IpcConstants.RETURN_ERROR);
 							}
 
 							break;
 						}
 
-						case IpcConstants.NOTIFY_IDENT:
+						case IpcConstants.NOTIFY_TOTAL:
 						{
-							IPCLogger.InfoFormat("{0} | IPC identifier change requested : '{1}'", uidString, message[0].ConvertToStringUTF8());
-							IPCIdentifiers[uidFrame.ToByteArray()] = message[0].ConvertToStringUTF8();
+							int total = message[0].ConvertToInt32();
+							IPCLogger.DebugFormat("{0} | IPC sent total job count : {1}", uidString, total);
+							if (IPCProgressBars.TryGetValue(uidFrame.ToByteArray(), out ChildProgressBar? bar))
+								bar.MaxTicks = total;
 							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							break;
 						}
 
 						case IpcConstants.NOTIFY_DOWNLOADED:
 						{
-							IPCLogger.InfoFormat("{0} | [{1}] Image {2} process result : {3}", uidString, ImageProcessed(), message[0].ConvertToInt64(), (PixivDownloadResult)message[1].ConvertToInt32());
+							var status = (PixivDownloadResult)message[1].ConvertToInt32();
+							IPCLogger.DebugFormat("{0} | [{1}] Image {2} process result : {3}", uidString, ImageProcessed(), message[0].ConvertToInt64(), status);
+							if (IPCProgressBars.TryGetValue(uidFrame.ToByteArray(), out ChildProgressBar? bar))
+								bar.Tick();
 							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							break;
 						}
 
 						case IpcConstants.NOTIFY_TITLE:
 						{
-							IPCLogger.InfoFormat("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
+							IPCLogger.DebugFormat("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
 							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							break;
 						}
 					}
 				});
-				ipcSetupProgressBar.Message = "Initializing IPC sockets: Task request socket";
+
+				ProgressBarUtils.TickGlobal("IPC task request socket initialization");
 
 				// Socket for long-running or blocking tasks
 				using IpcConnection taskRequestSocket = IpcExtension.InitializeIPCSocket(ipcTaskAddr, (socket, uidFrame, group, message) =>
@@ -212,15 +220,17 @@ namespace ParallelPixivUtil2
 					{
 						case IpcConstants.HANDSHAKE:
 						{
-							IPCLogger.InfoFormat("{0} | IPC Handshake received : '{1}'", uidString, message[0].ConvertToStringUTF8());
+							string newIdentifier = message[0].ConvertToStringUTF8();
+							IPCLogger.DebugFormat("{0} | IPC Handshake received : '{1}'", uidString, newIdentifier);
 							string pipeType = message[1].ConvertToStringUTF8();
 							if (pipeType.Equals("Task", StringComparison.OrdinalIgnoreCase))
 							{
+								IPCIdentifiers[uidFrame.ToByteArray()] = newIdentifier;
 								socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 							}
 							else
 							{
-								IPCLogger.FatalFormat("Unexpected handshake: {0} - Task expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType);
+								IPCLogger.FatalFormat("Unexpected handshake '{0}' from {1} - Task expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType, uidString);
 								socket.Send(uidFrame, group, IpcConstants.RETURN_ERROR);
 							}
 
@@ -241,10 +251,11 @@ namespace ParallelPixivUtil2
 							// Allocate task
 							FFmpegTasks.Add(taskID, Task.Run(async () =>
 							{
-								IPCLogger.InfoFormat("{0} | FFmpeg execution '{1}' is waiting for semaphore...", uidString, taskID);
+								IPCLogger.DebugFormat("{0} | FFmpeg execution '{1}' is waiting for semaphore...", uidString, taskID);
 								await ffmpegSemaphore.WaitAsync();
 
-								IPCLogger.InfoFormat("{0} | FFmpeg execution '{1}' is in process...", uidString, taskID);
+								IPCLogger.DebugFormat("{0} | FFmpeg execution '{1}' is in process...", uidString, taskID);
+								var bar = ProgressBarUtils.SpawnIndeterminateChild($"FFmpeg execution request by '{uidString}'");
 
 								int exitCode = -1;
 								try
@@ -267,7 +278,8 @@ namespace ParallelPixivUtil2
 								finally
 								{
 									ffmpegSemaphore.Release();
-									IPCLogger.InfoFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
+									IPCLogger.DebugFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
+									bar?.Finished();
 								}
 								return exitCode;
 							}));
@@ -280,7 +292,7 @@ namespace ParallelPixivUtil2
 							int taskID = BitConverter.ToInt32(message[0].Buffer);
 							if (FFmpegTasks.ContainsKey(taskID))
 							{
-								IPCLogger.InfoFormat("{0} | Exit code of FFmpeg execution '{1}' requested.", uidString, taskID);
+								IPCLogger.DebugFormat("{0} | Exit code of FFmpeg execution '{1}' requested.", uidString, taskID);
 								Task.Run(async () => socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(await FFmpegTasks[taskID]))));
 							}
 							else
@@ -306,27 +318,20 @@ namespace ParallelPixivUtil2
 						}
 					}
 				});
-				ipcSetupProgressBar.Finished();
-				progressBar.Tick();
 
 				CreateDirectoryIfNotExists(config.LogPath);
 				CreateDirectoryIfNotExists(config.Aria2InputPath);
 				CreateDirectoryIfNotExists(config.DatabasePath);
 
-				IndeterminateChildProgressBar readListProgressBar = progressBar.SpawnIndeterminate("Reading al lines of " + listFile, DefaultProgressBarOpts);
-				MainLogger.InfoFormat("Reading all lines of {0}", listFile);
+				ProgressBarUtils.TickGlobal($"Reading all lines of {listFile}");
+				MainLogger.DebugFormat("Reading all lines of {0}", listFile);
 				string[] memberIds = File.ReadAllLines(listFile);
-				readListProgressBar.Finished();
-				progressBar.Tick();
 
 				var extractor = new ExtractorRecord(extractorExe, extractorPy, pythonSourceFileExists, extractorWorkingDirectory, ipcCommAddr, ipcTaskAddr, config.LogPath, config.Aria2InputPath, config.DatabasePath);
 
-				IndeterminateChildProgressBar retrieveMemberDataProgressBar = progressBar.SpawnIndeterminate("Retrieveing member data", DefaultProgressBarOpts);
-
+				ProgressBarUtils.TickGlobal("Retrieveing member data");
 				// Extract URLs
 				RetrieveMemberDataList(extractor, config.MemberDataListParameters, config.MemberDataListFile, memberIds);
-				retrieveMemberDataProgressBar.Finished();
-				progressBar.Tick();
 
 				if (!File.Exists(config.MemberDataListFile))
 				{
@@ -334,22 +339,16 @@ namespace ParallelPixivUtil2
 					return 1;
 				}
 
-				IndeterminateChildProgressBar parseMemberDataProgressBar = progressBar.SpawnIndeterminate("Parsing member data", DefaultProgressBarOpts);
-
-				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(config.MemberDataListFile, out int totalImageCount, out int totalPageCount);
-				parseMemberDataProgressBar.Finished();
-				progressBar.Tick();
-
-				await Task.Delay(5000);
-
-				return 0;
+				ProgressBarUtils.TickGlobal("Parsing member data");
+				IDictionary<long, ICollection<MemberPage>> memberPageList = ParseMemberDataList(config.MemberDataListFile, config.MaxImagesPerPage, out int totalImageCount, out int totalPageCount);
 
 				extractor.TotalPageCount = totalPageCount;
 				var downloader = new DownloaderRecord(totalPageCount, config.DownloaderExecutable, extractorWorkingDirectory, config.LogPath, config.Aria2InputPath, config.DatabasePath);
 
 				if (!onlyPostProcessing)
 				{
-					MainLogger.Info("Extracting member images.");
+					ProgressBarUtils.SetGlobal(totalImageCount, "Extracting member images");
+					MainLogger.Debug("Extracting member images.");
 					PhaseChange("Extraction", totalImageCount);
 					BeginFlushDownloadInputQueueTimer(config.DownloadInputDelay, config.DownloadInputPeriod);
 					using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
@@ -358,7 +357,8 @@ namespace ParallelPixivUtil2
 					}
 					EndFlushDownloadInputQueueTimer();
 
-					MainLogger.Info("Start downloading.");
+					ProgressBarUtils.SetGlobal(totalPageCount, "Post-processing");
+					MainLogger.Debug("Start downloading.");
 					Console.Title = "Downloading phase";
 					using (var semaphore = new SemaphoreSlim(config.MaxDownloaderParallellism))
 					{
@@ -366,7 +366,8 @@ namespace ParallelPixivUtil2
 					}
 				}
 
-				MainLogger.Info("Start post-processing.");
+				ProgressBarUtils.SetGlobal(totalImageCount, "Post-processing");
+				MainLogger.Debug("Start post-processing.");
 				PhaseChange("Post-processing", totalImageCount);
 				using (var semaphore = new SemaphoreSlim(config.MaxPostprocessorParallellism))
 				{
@@ -393,11 +394,14 @@ namespace ParallelPixivUtil2
 					await semaphore.WaitAsync();
 					tasks.Add(Task.Run(() =>
 					{
-						MainLogger.InfoFormat("Post-processing started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
+						MainLogger.DebugFormat("Post-processing started: '{0}.p{1}'. (page {2})", memberId, page.FileIndex, page.Page);
 
 						var postProcessor = new Process();
 						try
 						{
+							string ident = $"{memberId}_page{page.Page}";
+							IPCProgressBarMessages[ident] = $"Member {memberId} Page {page.Page}";
+
 							postProcessor.StartInfo.FileName = extractor.Executable;
 							postProcessor.StartInfo.WorkingDirectory = extractor.ExtractorWorkingDir;
 							postProcessor.StartInfo.Arguments = extractor.ExtraArguments + FormatTokens(parameters, new Dictionary<string, string>
@@ -405,7 +409,7 @@ namespace ParallelPixivUtil2
 								["memberID"] = memberId.ToString(),
 								["page"] = page.Page.ToString(),
 								["fileIndex"] = page.FileIndex.ToString(),
-								["ipcAddress"] = extractor.IPCCommAddress + '|' + extractor.IPCTaskAddress,
+								["ipcAddress"] = ident + '|' + extractor.IPCCommAddress + '|' + extractor.IPCTaskAddress,
 								["logPath"] = extractor.LogPath,
 								["aria2InputPath"] = extractor.Aria2InputPath,
 								["databasePath"] = extractor.DatabasePath
@@ -423,6 +427,7 @@ namespace ParallelPixivUtil2
 						{
 							semaphore.Release();
 							MainLogger.InfoFormat("Post-processing finished (Exit code {0}): '{1}.p{2}' (page {3}); waiting for {4} remaining operations.", postProcessor.ExitCode, memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remainingOperationCount));
+							ProgressBarUtils.TickGlobal($"Download finished for member {memberId} page {page.Page}");
 						}
 					}));
 				}
@@ -437,12 +442,12 @@ namespace ParallelPixivUtil2
 			var tasks = new List<Task>();
 			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
-				foreach (int fileIndex in pages.Select(page => page.FileIndex))
+				foreach ((int nPage, int fileIndex) in pages)
 				{
 					await semaphore.WaitAsync();
 					tasks.Add(Task.Run(() =>
 					{
-						MainLogger.InfoFormat("Downloading started: '{0}.p{1}'.", memberId, fileIndex);
+						MainLogger.DebugFormat("Downloading started: '{0}.p{1}'.", memberId, fileIndex);
 
 						var downloader = new Process();
 						try
@@ -470,6 +475,7 @@ namespace ParallelPixivUtil2
 						{
 							semaphore.Release();
 							MainLogger.InfoFormat("Downloading finished (Exit code {0}): '{1}.p{2}'; waiting for {3} remaining operations.", downloader.ExitCode, memberId, fileIndex, Interlocked.Decrement(ref remainingOperationCount));
+							ProgressBarUtils.TickGlobal($"Download finished for member {memberId} page {nPage}");
 						}
 					}));
 				}
@@ -494,6 +500,9 @@ namespace ParallelPixivUtil2
 						var retriever = new Process();
 						try
 						{
+							string ident = $"{memberId}_page{page.Page}";
+							IPCProgressBarMessages[ident] = $"Member {memberId} Page {page.Page}";
+
 							retriever.StartInfo.FileName = extractor.Executable;
 							retriever.StartInfo.WorkingDirectory = extractor.ExtractorWorkingDir;
 							retriever.StartInfo.Arguments = extractor.ExtraArguments + FormatTokens(parameters, new Dictionary<string, string>
@@ -501,7 +510,7 @@ namespace ParallelPixivUtil2
 								["memberID"] = memberId.ToString(),
 								["page"] = page.Page.ToString(),
 								["fileIndex"] = page.FileIndex.ToString(),
-								["ipcAddress"] = extractor.IPCCommAddress + '|' + extractor.IPCTaskAddress,
+								["ipcAddress"] = ident + '|' + extractor.IPCCommAddress + '|' + extractor.IPCTaskAddress,
 								["logPath"] = extractor.LogPath,
 								["aria2InputPath"] = extractor.Aria2InputPath,
 								["databasePath"] = extractor.DatabasePath
@@ -519,6 +528,7 @@ namespace ParallelPixivUtil2
 						{
 							semaphore.Release();
 							MainLogger.InfoFormat("Extraction finished (Exit code {0}): '{1}.p{2}' (page {3}); waiting for {4} remaining operations.", retriever.ExitCode, memberId, page.FileIndex, page.Page, Interlocked.Decrement(ref remaining));
+							ProgressBarUtils.TickGlobal($"Retrieveing finished for member {memberId} page {page.Page}");
 						}
 					}));
 				}
@@ -527,7 +537,7 @@ namespace ParallelPixivUtil2
 			await Task.WhenAll(tasks);
 		}
 
-		private static IDictionary<long, ICollection<MemberPage>> ParseMemberDataList(string memberDataList, out int totalImageCount, out int totalPageCount)
+		private static IDictionary<long, ICollection<MemberPage>> ParseMemberDataList(string memberDataList, int maxImagesPerPage, out int totalImageCount, out int totalPageCount)
 		{
 			var memberPageList = new Dictionary<long, ICollection<MemberPage>>();
 			totalImageCount = 0;
@@ -546,7 +556,6 @@ namespace ParallelPixivUtil2
 					if (!memberPageList.ContainsKey(memberId))
 						memberPageList[memberId] = new List<MemberPage>();
 
-					const int maxImagesPerPage = 48;
 					int pageCount = (memberTotalImages - memberTotalImages % maxImagesPerPage) / maxImagesPerPage + 1;
 					for (int i = 1; i <= pageCount; i++)
 						memberPageList[memberId].Add(new MemberPage(i, pageCount - i + 1));

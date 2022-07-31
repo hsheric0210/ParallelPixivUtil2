@@ -8,7 +8,7 @@ namespace ParallelPixivUtil2
 		public static readonly NetMQFrame RETURN_ERROR = new("Error");
 	
 		public const string HANDSHAKE = "HS";
-		public const string NOTIFY_IDENT = "IDENT";
+		public const string NOTIFY_TOTAL = "TOTAL";
 		public const string NOTIFY_DOWNLOADED = "DL";
 		public const string NOTIFY_TITLE = "TITLE";
 		public const string NOTIFY_ERROR = "ERROR"; // TODO
