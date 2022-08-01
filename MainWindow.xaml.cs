@@ -22,7 +22,7 @@ namespace ParallelPixivUtil2
 	public partial class MainWindow : Window
 	{
 		private BackgroundWorker InitWorker;
-		private ViewModel vm = new();
+		private MainViewModel vm = new();
 
 		public MainWindow()
 		{
@@ -80,7 +80,7 @@ namespace ParallelPixivUtil2
 		}
 	}
 
-	public class ViewModel : Notifier
+	public class MainViewModel : PropertyChangeNotifier
 	{
 		private bool indeterminate = false;
 		private int maxProgress = 100;
@@ -125,17 +125,6 @@ namespace ParallelPixivUtil2
 				progressDetails = value;
 				OnPropertyChanged(nameof(ProgressDetails));
 			}
-		}
-	}
-
-	public class Notifier : INotifyPropertyChanged
-	{
-		public event PropertyChangedEventHandler? PropertyChanged;
-
-		protected void OnPropertyChanged(string propertyName)
-		{
-			if (PropertyChanged != null)
-				PropertyChanged(this, new PropertyChangedEventArgs(propertyName));
 		}
 	}
 }

@@ -1,5 +1,7 @@
 ﻿using log4net;
 using NetMQ;
+using ParallelPixivUtil2.Ipc;
+using ParallelPixivUtil2.Parameters;
 using ShellProgressBar;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -13,16 +15,14 @@ namespace ParallelPixivUtil2
 	{
 		public const string ProgramName = "ParallelPixivUtil2";
 
-		private static readonly ILog MainLogger = LogManager.GetLogger("Main");
-		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
+		public static readonly ILog MainLogger = LogManager.GetLogger("Main");
+		public static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
 
 		private static readonly IDictionary<byte[], string> IPCIdentifiers = new Dictionary<byte[], string>();
 		private static readonly IDictionary<byte[], ChildProgressBar> IPCProgressBars = new Dictionary<byte[], ChildProgressBar>();
 		private static readonly IDictionary<string, string> IPCProgressBarMessages = new Dictionary<string, string>();
 		private static readonly IDictionary<int, Task<int>> FFmpegTasks = new Dictionary<int, Task<int>>();
 		private static readonly IDictionary<string, IList<string>> DownloadInputQueue = new ConcurrentDictionary<string, IList<string>>();
-
-		private static Timer? DownloadInputQueueFlusher;
 
 		private static string CurrentPhaseName = "Unknown";
 		private static int ProcessedImageCount;
@@ -59,30 +59,11 @@ namespace ParallelPixivUtil2
 			bar?.Finished();
 		}
 
-		private static void BeginFlushDownloadInputQueueTimer(long delay, long period) => DownloadInputQueueFlusher = new Timer(_ => FlushDownloadInputQueue(), null, delay, period);
-
-		private static void EndFlushDownloadInputQueueTimer()
-		{
-			if (DownloadInputQueueFlusher == null)
-				return;
-
-			DownloadInputQueueFlusher.Dispose();
-			FlushDownloadInputQueue();
-		}
-
 		private static void PhaseChange(string phaseName, int totalImageCount)
 		{
 			CurrentPhaseName = phaseName;
 			ProcessedImageCount = 0;
 			TotalImageCount = totalImageCount;
-		}
-
-		private static string ImageProcessed()
-		{
-			int remaining = Interlocked.Increment(ref ProcessedImageCount);
-			string progress = $"{remaining}/{TotalImageCount}";
-			Console.Title = $"{CurrentPhaseName} phase : Processed {progress} images";
-			return progress;
 		}
 
 		private static bool RequireExists(string fileName)
@@ -150,175 +131,6 @@ namespace ParallelPixivUtil2
 				var ffmpegSemaphore = new SemaphoreSlim(config.MaxFFmpegParallellism);
 
 				ProgressBarUtils.TickGlobal("IPC communication socket initialization");
-				// Channel for communication, notification and task requesting.
-				using IpcConnection commSocket = IpcExtension.InitializeIPCSocket(ipcCommAddr, (socket, uidFrame, group, message) =>
-				{
-					string uidString = uidFrame.ToUniqueIDString();
-					if (!IPCIdentifiers.TryGetValue(uidFrame.ToByteArray(), out string? identifier))
-						uidString += $" ({identifier})";
-					switch (group)
-					{
-						case IpcConstants.HANDSHAKE:
-						{
-							string newIdentifier = message[0].ConvertToStringUTF8();
-							IPCLogger.DebugFormat("{0} | IPC Handshake received : '{1}'", uidString, newIdentifier);
-							string pipeType = message[1].ConvertToStringUTF8();
-							if (pipeType.Equals("Comm", StringComparison.OrdinalIgnoreCase))
-							{
-								IPCIdentifiers[uidFrame.ToByteArray()] = newIdentifier;
-								var bar = ProgressBarUtils.SpawnChild(config.MaxImagesPerPage, IPCProgressBarMessages[newIdentifier]);
-								if (bar != null)
-									IPCProgressBars[uidFrame.ToByteArray()] = bar;
-								socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
-							}
-							else
-							{
-								IPCLogger.FatalFormat("Unexpected handshake '{0}' from {1} - Comm expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType, uidString);
-								socket.Send(uidFrame, group, IpcConstants.RETURN_ERROR);
-							}
-
-							break;
-						}
-
-						case IpcConstants.NOTIFY_TOTAL:
-						{
-							int total = message[0].ConvertToInt32();
-							IPCLogger.DebugFormat("{0} | IPC sent total job count : {1}", uidString, total);
-							if (IPCProgressBars.TryGetValue(uidFrame.ToByteArray(), out ChildProgressBar? bar))
-								bar.MaxTicks = total;
-							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
-							break;
-						}
-
-						case IpcConstants.NOTIFY_DOWNLOADED:
-						{
-							var status = (PixivDownloadResult)message[1].ConvertToInt32();
-							IPCLogger.DebugFormat("{0} | [{1}] Image {2} process result : {3}", uidString, ImageProcessed(), message[0].ConvertToInt64(), status);
-							if (IPCProgressBars.TryGetValue(uidFrame.ToByteArray(), out ChildProgressBar? bar))
-								bar.Tick();
-							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
-							break;
-						}
-
-						case IpcConstants.NOTIFY_TITLE:
-						{
-							IPCLogger.DebugFormat("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
-							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
-							break;
-						}
-					}
-				});
-
-				ProgressBarUtils.TickGlobal("IPC task request socket initialization");
-
-				// Socket for long-running or blocking tasks
-				using IpcConnection taskRequestSocket = IpcExtension.InitializeIPCSocket(ipcTaskAddr, (socket, uidFrame, group, message) =>
-				{
-					string uidString = uidFrame.ToUniqueIDString();
-					if (!IPCIdentifiers.TryGetValue(uidFrame.ToByteArray(), out string? identifier))
-						uidString += $" ({identifier})";
-					switch (group)
-					{
-						case IpcConstants.HANDSHAKE:
-						{
-							string newIdentifier = message[0].ConvertToStringUTF8();
-							IPCLogger.DebugFormat("{0} | IPC Handshake received : '{1}'", uidString, newIdentifier);
-							string pipeType = message[1].ConvertToStringUTF8();
-							if (pipeType.Equals("Task", StringComparison.OrdinalIgnoreCase))
-							{
-								IPCIdentifiers[uidFrame.ToByteArray()] = newIdentifier;
-								socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
-							}
-							else
-							{
-								IPCLogger.FatalFormat("Unexpected handshake '{0}' from {1} - Task expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType, uidString);
-								socket.Send(uidFrame, group, IpcConstants.RETURN_ERROR);
-							}
-
-							break;
-						}
-
-						case IpcConstants.TASK_FFMPEG_REQUEST:
-						{
-							IPCLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
-
-							// Generate task ID
-							int taskID;
-							do
-							{
-								taskID = Random.Shared.Next();
-							} while (FFmpegTasks.ContainsKey(taskID));
-
-							// Allocate task
-							FFmpegTasks.Add(taskID, Task.Run(async () =>
-							{
-								IPCLogger.DebugFormat("{0} | FFmpeg execution '{1}' is waiting for semaphore...", uidString, taskID);
-								await ffmpegSemaphore.WaitAsync();
-
-								IPCLogger.DebugFormat("{0} | FFmpeg execution '{1}' is in process...", uidString, taskID);
-								var bar = ProgressBarUtils.SpawnIndeterminateChild($"FFmpeg execution request by '{uidString}'");
-
-								int exitCode = -1;
-								try
-								{
-									var ffmpeg = new Process();
-									ffmpeg.StartInfo.FileName = config.FFmpegExecutable;
-									ffmpeg.StartInfo.WorkingDirectory = extractorWorkingDirectory;
-									ffmpeg.StartInfo.UseShellExecute = true;
-									foreach (NetMQFrame arg in message)
-										ffmpeg.StartInfo.ArgumentList.Add(arg.ConvertToStringUTF8());
-									ffmpeg.Start();
-									ffmpeg.WaitForExit();
-									exitCode = ffmpeg.ExitCode;
-								}
-								catch (Exception ex)
-								{
-									exitCode = ex.HResult;
-									IPCLogger.Error(string.Format("{0} | FFmpeg execution failed with exception.", uidString), ex);
-								}
-								finally
-								{
-									ffmpegSemaphore.Release();
-									IPCLogger.DebugFormat("{0} | FFmpeg execution exited with code {1}.", uidString, exitCode);
-									bar?.Finished();
-								}
-								return exitCode;
-							}));
-							socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(taskID)));
-							break;
-						}
-
-						case IpcConstants.TASK_FFMPEG_RESULT:
-						{
-							int taskID = BitConverter.ToInt32(message[0].Buffer);
-							if (FFmpegTasks.ContainsKey(taskID))
-							{
-								IPCLogger.DebugFormat("{0} | Exit code of FFmpeg execution '{1}' requested.", uidString, taskID);
-								Task.Run(async () => socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(await FFmpegTasks[taskID]))));
-							}
-							else
-							{
-								IPCLogger.WarnFormat("{0} | Exit code of non-existent FFmpeg execution '{1}' requested.", uidString, taskID);
-								socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(-1)));
-							}
-							break;
-						}
-
-						case IpcConstants.TASK_ARIA2:
-						{
-							string fileName = Path.GetFullPath(message[0].ConvertToStringUTF8());
-							if (!DownloadInputQueue.TryGetValue(fileName, out IList<string>? list))
-							{
-								list = new List<string>();
-								DownloadInputQueue.Add(fileName, list);
-							}
-
-							list.Add(message[1].ConvertToStringUTF8());
-							socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(0)));
-							break;
-						}
-					}
-				});
 
 				CreateDirectoryIfNotExists(config.LogPath);
 				CreateDirectoryIfNotExists(config.Aria2InputPath);
@@ -606,8 +418,6 @@ namespace ParallelPixivUtil2
 			return format;
 		}
 	}
-
-	public sealed record MemberPage(int Page, int FileIndex);
 
 	public sealed record ExtractorRecord(string ExecutableExe, string ExecutablePy, bool PyExists, string ExtractorWorkingDir, string IPCCommAddress, string IPCTaskAddress, string LogPath, string Aria2InputPath, string DatabasePath)
 	{

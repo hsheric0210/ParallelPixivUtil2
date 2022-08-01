@@ -5,9 +5,12 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ParallelPixivUtil2"
         mc:Ignorable="d"
-        Title="Parallel PixivUtil2">
+        Title="Parallel PixivUtil2"
+		Width="Auto"
+		Height="Auto"
+		SizeToContent="WidthAndHeight">
 	<StackPanel Background="#FF404040">
-		<ProgressBar x:Name="InitProgressBar" IsIndeterminate="{Binding IsCurrentProgressIndeterminate}" Minimum="0" Maximum="{Binding MaxProgress}" Value="{Binding Progress}" Grid.Row="0" MinHeight="10" MinWidth="300" Margin="5,5,5,0"/>
+		<ProgressBar Grid.Column="1" x:Name="InitProgressBar" IsIndeterminate="{Binding IsCurrentProgressIndeterminate}" Minimum="0" Maximum="{Binding MaxProgress}" Value="{Binding Progress}" Grid.Row="0" MinHeight="10" MinWidth="300" Margin="5,5,5,0"/>
 		<TextBlock x:Name="InitProgressName" Text="{Binding ProgressDetails}"  Margin="10,0,5,5" VerticalAlignment="Center" HorizontalAlignment="Left" Foreground="White" Padding="0,0,0,10"/>
 		<ListBox x:Name="TaskList" Background="#FF333333" BorderThickness="1" BorderBrush="{x:Null}" Visibility="Hidden" Margin="5,5,5,5">
 			<ItemsControl.ItemTemplate>

@@ -1,12 +1,12 @@
 ﻿using NetMQ;
 
-namespace ParallelPixivUtil2
+namespace ParallelPixivUtil2.Ipc
 {
 	public static class IpcConstants
 	{
 		public static readonly NetMQFrame RETURN_OK = new("Ok");
 		public static readonly NetMQFrame RETURN_ERROR = new("Error");
-	
+
 		public const string HANDSHAKE = "HS";
 		public const string NOTIFY_TOTAL = "TOTAL";
 		public const string NOTIFY_DOWNLOADED = "DL";

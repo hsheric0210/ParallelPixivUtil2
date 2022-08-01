@@ -3,7 +3,7 @@ using NetMQ.Sockets;
 using System.Text;
 using System.Linq;
 
-namespace ParallelPixivUtil2
+namespace ParallelPixivUtil2.Ipc
 {
 	public static class IpcExtension
 	{
