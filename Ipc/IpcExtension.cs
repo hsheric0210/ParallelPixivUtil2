@@ -1,7 +1,6 @@
 ﻿using NetMQ;
 using NetMQ.Sockets;
 using System.Text;
-using System.Linq;
 
 namespace ParallelPixivUtil2.Ipc
 {

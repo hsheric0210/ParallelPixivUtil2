@@ -1,18 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using log4net;
+using ParallelPixivUtil2.Tasks;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using System.Windows.Threading;
 
 namespace ParallelPixivUtil2
 {
@@ -21,16 +13,37 @@ namespace ParallelPixivUtil2
 	/// </summary>
 	public partial class MainWindow : Window
 	{
+		public static readonly ILog MainLogger = LogManager.GetLogger("Main");
+
 		private BackgroundWorker InitWorker;
-		private MainViewModel vm = new();
+		public MainViewModel vm;
+
+		// Will be initialized when constructor is finished
+		public static MainWindow INSTANCE
+		{
+			get; private set;
+		} = null!;
 
 		public MainWindow()
 		{
+			vm = new(Dispatcher);
 			InitializeComponent();
 			DataContext = vm;
 			StartWorker();
+			INSTANCE = this;
 		}
 
+		public void RegisterTask(AbstractTask task)
+		{
+			vm.AddTask(task);
+			//vm.DisplayTaskList.Add(task);
+			//Dispatcher.Invoke(() => TaskList.ItemsSource = vm.DisplayTaskList);
+		}
+
+		public void UnregisterTask(AbstractTask task)
+		{
+			vm.RemoveTask(task);
+		}
 
 		/// <summary>
 		/// 프로그레스바 컨트롤 증가 버튼 이벤트 핸들러
@@ -56,10 +69,17 @@ namespace ParallelPixivUtil2
 		/// <param name="e"></param>
 		private void DoWork(object? sender, DoWorkEventArgs e)
 		{
-			for (int i = 0; i < 5; i++)
+			try
 			{
-				InitWorker.ReportProgress(i, "Currently Initializing"); //값을 ReportProgress 매개변수로 전달
-				Thread.Sleep(1000); //0.1초
+				new TestTask().Start();
+			}
+			catch (Exception ex)
+			{
+				MainLogger.Error("Test error", ex);
+			}
+			for (int i = 0; i < 10; i++)
+			{
+				Thread.Sleep(20); //0.1초
 			}
 		}
 
@@ -77,15 +97,26 @@ namespace ParallelPixivUtil2
 		private void OnWorkerCompleted(object? sender, RunWorkerCompletedEventArgs e)
 		{
 			vm.Progress = vm.MaxProgress;
+			vm.ProgressDetails = "Finished";
 		}
 	}
 
 	public class MainViewModel : PropertyChangeNotifier
 	{
+		private Dispatcher Dispatcher;
+
 		private bool indeterminate = false;
 		private int maxProgress = 100;
 		private int progress = 0;
 		private string progressDetails = "Initialization";
+		private CollectionViewSource taskListViewSource = new CollectionViewSource();
+		private ObservableCollection<AbstractTask> taskList = new ObservableCollection<AbstractTask>();
+
+		public MainViewModel(Dispatcher dispatcher)
+		{
+			Dispatcher = dispatcher;
+			taskListViewSource.Source = taskList;
+		}
 
 		public bool IsCurrentProgressIndeterminate
 		{
@@ -126,5 +157,31 @@ namespace ParallelPixivUtil2
 				OnPropertyChanged(nameof(ProgressDetails));
 			}
 		}
+
+		public ObservableCollection<AbstractTask> DisplayTaskList
+		{
+			get => taskList;
+
+			set
+			{
+				taskList = value;
+				taskListViewSource.Source = taskList;
+				OnPropertyChanged(nameof(DisplayTaskList));
+			}
+		}
+
+		public ICollectionView TaskListView => taskListViewSource.View;
+
+		public void AddTask(AbstractTask task)
+		{
+			Dispatcher.Invoke(() => DisplayTaskList.Add(task));
+		}
+
+		public void RemoveTask(AbstractTask task)
+		{
+			Dispatcher.Invoke(() => DisplayTaskList.Remove(task));
+		}
+
+		public void UpdateTaskList() => OnPropertyChanged(nameof(DisplayTaskList));
 	}
 }

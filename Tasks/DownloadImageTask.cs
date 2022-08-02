@@ -5,16 +5,23 @@ using System.Diagnostics;
 
 namespace ParallelPixivUtil2.Tasks
 {
-	public class MemberDataExtractionTask : AbstractTask
+	public class DownloadImageTask : AbstractTask
 	{
-		private readonly PixivUtil2Parameter Parameter;
+		private readonly Config Configuration;
+		private readonly Aria2Parameter Parameter;
 
-		public MemberDataExtractionTask(PixivUtil2Parameter parameter) : base("Retrieve member data") => Parameter = parameter;
+		public DownloadImageTask(Config config, Aria2Parameter parameter, MemberSubParameter member) : base($"Download member image of {member.MemberID} page {member.Page}")
+		{
+			Configuration = config;
+			Parameter = parameter;
+		}
 
 		protected override bool Run()
 		{
 			try
 			{
+				Details = "Retrieveing member data list";
+
 				var retriever = new Process();
 				retriever.StartInfo.FileName = Parameter.FileName;
 				retriever.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;

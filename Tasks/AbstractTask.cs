@@ -74,7 +74,7 @@
 			get; protected set;
 		}
 
-		protected AbstractTask(string taskName) => this.taskName = taskName;
+		protected AbstractTask(string taskName) => TaskName = taskName;
 
 		protected abstract bool Run();
 
@@ -88,6 +88,13 @@
 			Details += " - Finished!";
 			Indeterminate = false;
 			CurrentProgress = TotalProgress;
+			Dispose();
+		}
+
+		public void Start()
+		{
+			MainWindow.INSTANCE.RegisterTask(this);
+			RunInternal();
 		}
 	}
 }

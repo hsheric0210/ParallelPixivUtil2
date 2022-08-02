@@ -45,48 +45,14 @@
 			get; set;
 		}
 
-		public MemberParameter? Member
+		public MemberSubParameter? Member
 		{
 			get;set;
 		}
 
-		public IpcParameter? Ipc
+		public IpcSubParameter? Ipc
 		{
 			get; set;
-		}
-	}
-
-	public struct MemberParameter
-	{
-		public long? MemberID
-		{
-			get; set;
-		}
-
-		public MemberPage? Page
-		{
-			get; set;
-		}
-	}
-
-	public struct IpcParameter
-	{
-		public string Identifier
-		{
-			get;
-			set;
-		}
-
-		public string IPCCommunicationAddress
-		{
-			get;
-			set;
-		}
-
-		public string IPCTaskAddress
-		{
-			get;
-			set;
 		}
 	}
 }

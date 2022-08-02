@@ -1,6 +1,4 @@
 ﻿using log4net;
-using NetMQ;
-using ParallelPixivUtil2.Ipc;
 using ParallelPixivUtil2.Parameters;
 using ShellProgressBar;
 using System.Collections.Concurrent;
@@ -163,12 +161,12 @@ namespace ParallelPixivUtil2
 					ProgressBarUtils.SetGlobal(totalImageCount, "Extracting member images");
 					MainLogger.Debug("Extracting member images.");
 					PhaseChange("Extraction", totalImageCount);
-					BeginFlushDownloadInputQueueTimer(config.DownloadInputDelay, config.DownloadInputPeriod);
+					//BeginFlushDownloadInputQueueTimer(config.DownloadInputDelay, config.DownloadInputPeriod);
 					using (var semaphore = new SemaphoreSlim(config.MaxExtractorParallellism))
 					{
 						await RetrieveMemberImages(extractor, config.ExtractorParameters, memberPageList, semaphore);
 					}
-					EndFlushDownloadInputQueueTimer();
+					//EndFlushDownloadInputQueueTimer();
 
 					ProgressBarUtils.SetGlobal(totalPageCount, "Post-processing");
 					MainLogger.Debug("Start downloading.");

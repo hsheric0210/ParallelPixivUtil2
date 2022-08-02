@@ -4,21 +4,21 @@ using System.Diagnostics;
 
 namespace ParallelPixivUtil2.Tasks
 {
-	public class RetrieveImageTask : AbstractTask
+	public class PostprocessingTask : AbstractTask
 	{
 		private readonly PixivUtil2Parameter Parameter;
 		private readonly string? MyIdentifier;
 
-		public RetrieveImageTask(PixivUtil2Parameter parameter) : base("Retrieve member image")
+		public PostprocessingTask(PixivUtil2Parameter parameter) : base("Post-processing")
 		{
 			if (parameter.Member == null)
-				throw new ArgumentException("parameter.Member can't be null when initializing " + nameof(RetrieveImageTask));
+				throw new ArgumentException("parameter.Member can't be null when initializing " + nameof(PostprocessingTask));
 			if (parameter.Ipc == null)
-				throw new ArgumentException("parameter.Ipc can't be null when initializing " + nameof(RetrieveImageTask));
+				throw new ArgumentException("parameter.Ipc can't be null when initializing " + nameof(PostprocessingTask));
 
 			Parameter = parameter;
 
-			Details = $"Retrieve member image of {parameter.Member?.MemberID} page {parameter.Member?.Page}";
+			Details = $"Post-processing of {parameter.Member?.MemberID} page {parameter.Member?.Page}";
 
 			MyIdentifier = parameter.Ipc?.Identifier;
 			IpcManager.OnIpcTotalNotify += OnTotalNotify;
@@ -29,19 +29,20 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
-				var retriever = new Process();
-				retriever.StartInfo.FileName = Parameter.FileName;
-				retriever.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
-				retriever.StartInfo.Arguments = Parameter.Parameter;
-				retriever.StartInfo.UseShellExecute = true;
-				retriever.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
-				retriever.Start();
-				retriever.WaitForExit();
-				ExitCode = retriever.ExitCode;
+				var postProcessor = new Process();
+				postProcessor.StartInfo.FileName = Parameter.FileName;
+				postProcessor.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
+				postProcessor.StartInfo.Arguments = Parameter.Parameter;
+				postProcessor.StartInfo.UseShellExecute = false;
+				postProcessor.StartInfo.CreateNoWindow = true;
+				postProcessor.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
+				postProcessor.Start();
+				postProcessor.WaitForExit();
+				ExitCode = postProcessor.ExitCode;
 			}
 			catch (Exception ex)
 			{
-				ParallelPixivUtil2Main.MainLogger.Error("Error occurred while retrieveing member image", ex);
+				ParallelPixivUtil2Main.MainLogger.Error("Error occurred while post-processing", ex);
 				Details = $"Error: '{ex.Message}' (see log for details)";
 				return true;
 			}

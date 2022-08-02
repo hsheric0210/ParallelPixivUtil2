@@ -18,7 +18,7 @@ namespace ParallelPixivUtil2.Ipc
 
 		public static event EventHandler<IpcEventArgs>? OnIpcOpened;
 		public static event EventHandler<IpcTotalNotifyEventArgs>? OnIpcTotalNotify;
-		public static event EventHandler<IpcEventArgs>? OnIpcDownloadNotify;
+		public static event EventHandler<IpcEventArgs>? OnIpcProcessNotify;
 
 		private static SemaphoreSlim FFmpegSemaphore;
 
@@ -73,7 +73,7 @@ namespace ParallelPixivUtil2.Ipc
 					{
 						var status = (PixivDownloadResult)message[1].ConvertToInt32();
 						IPCLogger.DebugFormat("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), status);
-						OnIpcDownloadNotify?.Invoke(null, new IpcEventArgs(IpcType.Communication, identifier));
+						OnIpcProcessNotify?.Invoke(null, new IpcEventArgs(IpcType.Communication, identifier));
 						// if (IPCProgressBars.TryGetValue(uidFrame.ToByteArray(), out ChildProgressBar? bar))
 						// 	bar.Tick();
 						socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
@@ -151,7 +151,7 @@ namespace ParallelPixivUtil2.Ipc
 							// TODO: Register FFmpegTask to MainWindow
 
 							var task = new FFmpegTask(config, uidString, extractorWorkingDirectory, message.Select(msg => msg.ConvertToStringUTF8()), FFmpegSemaphore);
-							task.RunInternal();
+							task.Start();
 							return task.ExitCode;
 						}));
 						socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(taskID)));

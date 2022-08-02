@@ -1,11 +1,5 @@
 ﻿using log4net;
-using ParallelPixivUtil2.Parameters;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 // TODO: Add progress notification support to ExtractMemberPhase
 
@@ -21,7 +15,7 @@ namespace ParallelPixivUtil2.Tasks
 		private readonly IEnumerable<string> Parameters;
 		private readonly SemaphoreSlim? FFmpegSemaphore;
 
-		public FFmpegTask(Config config, string requestedBy, string workingDirectory, IEnumerable<string> parameters, SemaphoreSlim? ffmpegSemaphore) : base("Retrieve member image")
+		public FFmpegTask(Config config, string requestedBy, string workingDirectory, IEnumerable<string> parameters, SemaphoreSlim? ffmpegSemaphore) : base("FFmpeg execution requested by " + requestedBy)
 		{
 			Configuration = config;
 			RequestedBy = requestedBy;

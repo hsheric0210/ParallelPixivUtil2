@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace ParallelPixivUtil2
+﻿namespace ParallelPixivUtil2
 {
 	public enum PixivDownloadResult
 	{

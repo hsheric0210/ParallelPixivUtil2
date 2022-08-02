@@ -9,18 +9,45 @@
 		Width="Auto"
 		Height="Auto"
 		SizeToContent="WidthAndHeight">
-	<StackPanel Background="#FF404040">
-		<ProgressBar Grid.Column="1" x:Name="InitProgressBar" IsIndeterminate="{Binding IsCurrentProgressIndeterminate}" Minimum="0" Maximum="{Binding MaxProgress}" Value="{Binding Progress}" Grid.Row="0" MinHeight="10" MinWidth="300" Margin="5,5,5,0"/>
-		<TextBlock x:Name="InitProgressName" Text="{Binding ProgressDetails}"  Margin="10,0,5,5" VerticalAlignment="Center" HorizontalAlignment="Left" Foreground="White" Padding="0,0,0,10"/>
-		<ListBox x:Name="TaskList" Background="#FF333333" BorderThickness="1" BorderBrush="{x:Null}" Visibility="Hidden" Margin="5,5,5,5">
+	<Window.Resources>
+		<Style x:Key="ErrorDisplay" TargetType="Label">
+			<Setter Property="Visibility" Value="Hidden"/>
+			<Style.Triggers>
+				<DataTrigger Binding="{Binding Error}" Value="true">
+					<Setter Property="Visibility" Value="Visible"/>
+					<Setter Property="FontWeight" Value="Bold"/>
+				</DataTrigger>
+			</Style.Triggers>
+		</Style>
+	</Window.Resources>
+	<Grid Background="#FF404040">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+		<ProgressBar Grid.Row="0" x:Name="InitProgressBar" IsIndeterminate="{Binding IsCurrentProgressIndeterminate}" Minimum="0" Maximum="{Binding MaxProgress}" Value="{Binding Progress}" MinHeight="10" MinWidth="300" Margin="5,5,5,0"/>
+		<TextBlock Grid.Row="1" x:Name="InitProgressName" Text="{Binding ProgressDetails}"  Margin="10,0,5,5" VerticalAlignment="Center" HorizontalAlignment="Left" Foreground="White" Padding="0,0,0,10"/>
+		<ItemsControl Grid.Row="2"  x:Name="TaskList" Background="#FF333333" BorderThickness="1" MinHeight="200" BorderBrush="{x:Null}" Margin="5,5,5,5" ItemsSource="{Binding TaskListView}">
 			<ItemsControl.ItemTemplate>
 				<DataTemplate>
-					<StackPanel>
-						<ProgressBar Grid.Row="0" Minimum="0" Maximum="{Binding ProgressMax}" Value="{Binding Progress}" Grid.RowSpan="1" Grid.Column="0" HorizontalContentAlignment="Stretch"/>
-						<Label Grid.Row="0" Grid.Column="1" Content="{Binding Details}"/>
-					</StackPanel>
+					<Grid Margin="5,5,5,5" Background="#FF202020">
+						<Grid.RowDefinitions>
+							<RowDefinition Height="Auto"/>
+							<RowDefinition Height="Auto"/>
+							<RowDefinition Height="Auto"/>
+						</Grid.RowDefinitions>
+						<Grid.ColumnDefinitions>
+							<ColumnDefinition Width="Auto"/>
+							<ColumnDefinition Width="*"/>
+						</Grid.ColumnDefinitions>
+						<Label Grid.Row="0" Grid.Column="0" Content="{Binding TaskName}" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="White" Margin="5,0,0,0" Padding="0,5,0,10"/>
+						<Label Grid.Row="0" Grid.Column="1" Foreground="Red" Content="Error occurred!" Style="{StaticResource ErrorDisplay}" HorizontalContentAlignment="Right" Padding="0,5,0,10" Margin="0,0,5,0"/>
+						<ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Minimum="0" Maximum="{Binding TotalProgress}" Value="{Binding CurrentProgress}" IsIndeterminate="{Binding Indeterminate}" MinHeight="10" MinWidth="50" HorizontalContentAlignment="Stretch" Margin="5,0,5,0"/>
+						<Label Grid.Row="2" Grid.Column="0" Content="{Binding Details}" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="Gray" Margin="10,0,0,0" Padding="0,10,0,5"/>
+					</Grid>
 				</DataTemplate>
 			</ItemsControl.ItemTemplate>
-		</ListBox>
-	</StackPanel>
+		</ItemsControl>
+	</Grid>
 </Window>

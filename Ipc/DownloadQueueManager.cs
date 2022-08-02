@@ -26,15 +26,12 @@ namespace ParallelPixivUtil2.Ipc
 				list = new List<string>();
 				DownloadQueue.Add(fileName, list);
 			}
-
-			DownloadQueue[fileName].Add(data);
+			list.Add(data);
 		}
 
 		private static void FlushQueue()
 		{
-			// FlushDownloadInputQueue();
-			var task = new DownloadQueueFlushTask(DownloadQueue);
-			task.RunInternal();
+			new DownloadQueueFlushTask(DownloadQueue).Start();
 		}
 	}
 }
