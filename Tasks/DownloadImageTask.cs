@@ -7,14 +7,9 @@ namespace ParallelPixivUtil2.Tasks
 {
 	public class DownloadImageTask : AbstractTask
 	{
-		private readonly Config Configuration;
 		private readonly Aria2Parameter Parameter;
 
-		public DownloadImageTask(Config config, Aria2Parameter parameter, MemberSubParameter member) : base($"Download member image of {member.MemberID} page {member.Page}")
-		{
-			Configuration = config;
-			Parameter = parameter;
-		}
+		public DownloadImageTask(Aria2Parameter parameter, MemberSubParameter member) : base($"Download member image of {member.MemberID} page {member.Page}") => Parameter = parameter;
 
 		protected override bool Run()
 		{

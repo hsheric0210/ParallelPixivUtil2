@@ -9,15 +9,13 @@ namespace ParallelPixivUtil2.Tasks
 	{
 		private static readonly ILog Logger = LogManager.GetLogger(nameof(FFmpegTask));
 
-		private readonly Config Configuration;
 		private readonly string RequestedBy;
 		private readonly string ExtractorWorkingDirectory;
 		private readonly IEnumerable<string> Parameters;
 		private readonly SemaphoreSlim? FFmpegSemaphore;
 
-		public FFmpegTask(Config config, string requestedBy, string workingDirectory, IEnumerable<string> parameters, SemaphoreSlim? ffmpegSemaphore) : base("FFmpeg execution requested by " + requestedBy)
+		public FFmpegTask(string requestedBy, string workingDirectory, IEnumerable<string> parameters, SemaphoreSlim? ffmpegSemaphore) : base("FFmpeg execution requested by " + requestedBy)
 		{
-			Configuration = config;
 			RequestedBy = requestedBy;
 			ExtractorWorkingDirectory = workingDirectory;
 			Parameters = parameters;
@@ -30,7 +28,7 @@ namespace ParallelPixivUtil2.Tasks
 			try
 			{
 				var ffmpeg = new Process();
-				ffmpeg.StartInfo.FileName = Configuration.FFmpegExecutable;
+				ffmpeg.StartInfo.FileName = App.Configuration.FFmpegExecutable;
 				ffmpeg.StartInfo.WorkingDirectory = ExtractorWorkingDirectory;
 				ffmpeg.StartInfo.UseShellExecute = true;
 				foreach (string param in Parameters)

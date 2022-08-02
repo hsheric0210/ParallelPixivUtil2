@@ -1,6 +1,6 @@
 ﻿namespace ParallelPixivUtil2.Parameters
 {
-	public sealed record PixivUtil2Parameter(string Executable, string PythonExecutable, string PythonScript, bool IsPythonScript, string ParameterFormat, string WorkingDirectory, string LogPath) : AbstractParameter(ParameterFormat)
+	public sealed record PixivUtil2Parameter(string Executable, string PythonExecutable, string PythonScript, bool IsPythonScript, string WorkingDirectory, string LogPath) : AbstractParameter
 	{
 		public override string FileName => IsPythonScript ? PythonExecutable : Executable;
 
@@ -31,6 +31,9 @@
 					dict["fileIndex"] = Member?.Page!.FileIndex.ToString()!;
 				}
 
+				if (MemberDataListFile != null)
+					dict["memberDataList"] = MemberDataListFile;
+
 				return dict;
 			}
 		}
@@ -41,6 +44,11 @@
 		}
 
 		public string? DatabasePath
+		{
+			get; set;
+		}
+
+		public string? MemberDataListFile
 		{
 			get; set;
 		}

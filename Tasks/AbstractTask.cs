@@ -2,7 +2,7 @@
 {
 	public abstract class AbstractTask : PropertyChangeNotifier, IDisposable
 	{
-		private string taskName;
+		private string taskName = "Generic";
 		private int totalProgress = 10;
 		private int currentProgress;
 		private string details = "Unknown";
@@ -89,12 +89,6 @@
 			Indeterminate = false;
 			CurrentProgress = TotalProgress;
 			Dispose();
-		}
-
-		public void Start()
-		{
-			MainWindow.INSTANCE.RegisterTask(this);
-			RunInternal();
 		}
 	}
 }

@@ -1,10 +1,8 @@
 ﻿using log4net;
+using ParallelPixivUtil2.Parameters;
 using ParallelPixivUtil2.Tasks;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Data;
-using System.Windows.Threading;
 
 namespace ParallelPixivUtil2
 {
@@ -13,7 +11,7 @@ namespace ParallelPixivUtil2
 	/// </summary>
 	public partial class MainWindow : Window
 	{
-		public static readonly ILog MainLogger = LogManager.GetLogger("Main");
+		public static readonly ILog MainLogger = LogManager.GetLogger(nameof(MainWindow));
 
 		private BackgroundWorker InitWorker;
 		public MainViewModel vm;
@@ -36,8 +34,6 @@ namespace ParallelPixivUtil2
 		public void RegisterTask(AbstractTask task)
 		{
 			vm.AddTask(task);
-			//vm.DisplayTaskList.Add(task);
-			//Dispatcher.Invoke(() => TaskList.ItemsSource = vm.DisplayTaskList);
 		}
 
 		public void UnregisterTask(AbstractTask task)
@@ -45,11 +41,6 @@ namespace ParallelPixivUtil2
 			vm.RemoveTask(task);
 		}
 
-		/// <summary>
-		/// 프로그레스바 컨트롤 증가 버튼 이벤트 핸들러
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
 		private void StartWorker()
 		{
 			InitWorker = new BackgroundWorker
@@ -62,25 +53,43 @@ namespace ParallelPixivUtil2
 			InitWorker.RunWorkerAsync();
 		}
 
-		/// <summary>
-		/// DoWorker 스레드 이벤트 핸들러
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
 		private void DoWork(object? sender, DoWorkEventArgs e)
 		{
-			try
+			if (StartTask(new ParseListFileTask()))
 			{
-				new TestTask().Start();
+				var ipcConfig = new IpcSubParameter
+				{
+					IPCCommunicationAddress = $"tcp://localhost:{App.Configuration.IPCCommPort}",
+					IPCTaskAddress = $"tcp://localhost:{App.Configuration.IPCTaskPort}"
+				};
+
+				string memberDataListFile = App.Configuration.MemberDataListFile;
+				var pixivutil2Params = new PixivUtil2Parameter(App.Configuration.ExtractorExecutable, "Python.exe", App.Configuration.ExtractorScript, App.IsExtractorScript, App.ExtractorWorkingDirectory, App.Configuration.LogPath)
+				{
+					ParameterFormat = App.Configuration.MemberDataListParameters,
+					Aria2InputPath = App.Configuration.Aria2InputPath,
+					DatabasePath = App.Configuration.DatabasePath,
+					MemberDataListFile = memberDataListFile,
+					Ipc = ipcConfig
+				};
+
+				if (StartTask(new MemberDataExtractionTask(pixivutil2Params)))
+				{
+					var parseDataList = new ParseMemberDataListTask(memberDataListFile);
+					if (StartTask(parseDataList))
+					{
+					}
+				}
 			}
-			catch (Exception ex)
-			{
-				MainLogger.Error("Test error", ex);
-			}
-			for (int i = 0; i < 10; i++)
-			{
-				Thread.Sleep(20); //0.1초
-			}
+		}
+
+		public bool StartTask(AbstractTask task)
+		{
+			MainWindow.INSTANCE.RegisterTask(task);
+			task.RunInternal();
+			if (!task.Error)
+				MainWindow.INSTANCE.UnregisterTask(task);
+			return !task.Error;
 		}
 
 		private void OnWorkerProgressChanged(object? sender, ProgressChangedEventArgs e)
@@ -89,99 +98,10 @@ namespace ParallelPixivUtil2
 			vm.ProgressDetails = (string?)e.UserState ?? "";
 		}
 
-		/// <summary>
-		/// 프로그레스바 컨트롤 작업 끝났을 때
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="e"></param>
 		private void OnWorkerCompleted(object? sender, RunWorkerCompletedEventArgs e)
 		{
 			vm.Progress = vm.MaxProgress;
 			vm.ProgressDetails = "Finished";
 		}
-	}
-
-	public class MainViewModel : PropertyChangeNotifier
-	{
-		private Dispatcher Dispatcher;
-
-		private bool indeterminate = false;
-		private int maxProgress = 100;
-		private int progress = 0;
-		private string progressDetails = "Initialization";
-		private CollectionViewSource taskListViewSource = new CollectionViewSource();
-		private ObservableCollection<AbstractTask> taskList = new ObservableCollection<AbstractTask>();
-
-		public MainViewModel(Dispatcher dispatcher)
-		{
-			Dispatcher = dispatcher;
-			taskListViewSource.Source = taskList;
-		}
-
-		public bool IsCurrentProgressIndeterminate
-		{
-			get => indeterminate;
-			set
-			{
-				indeterminate = value;
-				OnPropertyChanged(nameof(IsCurrentProgressIndeterminate));
-			}
-		}
-
-		public int MaxProgress
-		{
-			get => maxProgress;
-			set
-			{
-				maxProgress = value;
-				OnPropertyChanged(nameof(MaxProgress));
-			}
-		}
-
-		public int Progress
-		{
-			get => progress;
-			set
-			{
-				progress = value;
-				OnPropertyChanged(nameof(Progress));
-			}
-		}
-
-		public string ProgressDetails
-		{
-			get => progressDetails;
-			set
-			{
-				progressDetails = value;
-				OnPropertyChanged(nameof(ProgressDetails));
-			}
-		}
-
-		public ObservableCollection<AbstractTask> DisplayTaskList
-		{
-			get => taskList;
-
-			set
-			{
-				taskList = value;
-				taskListViewSource.Source = taskList;
-				OnPropertyChanged(nameof(DisplayTaskList));
-			}
-		}
-
-		public ICollectionView TaskListView => taskListViewSource.View;
-
-		public void AddTask(AbstractTask task)
-		{
-			Dispatcher.Invoke(() => DisplayTaskList.Add(task));
-		}
-
-		public void RemoveTask(AbstractTask task)
-		{
-			Dispatcher.Invoke(() => DisplayTaskList.Remove(task));
-		}
-
-		public void UpdateTaskList() => OnPropertyChanged(nameof(DisplayTaskList));
 	}
 }

@@ -1,6 +1,6 @@
 ﻿namespace ParallelPixivUtil2.Parameters
 {
-	public sealed record Aria2Parameter(string Executable, string ParameterFormat, string WorkingDirectory, string LogPath, string Aria2InputPath, string DatabasePath, long TargetMemberID, MemberPage TargetPage) : AbstractParameter(ParameterFormat)
+	public sealed record Aria2Parameter(string Executable, string WorkingDirectory, string LogPath, string Aria2InputPath, string DatabasePath, long TargetMemberID, MemberPage TargetPage) : AbstractParameter
 	{
 		public override string FileName => Executable;
 
