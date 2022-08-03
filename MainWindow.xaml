@@ -31,7 +31,7 @@
 		<ItemsControl Grid.Row="2"  x:Name="TaskList" Background="#FF333333" BorderThickness="1" MinHeight="200" BorderBrush="{x:Null}" Margin="5,5,5,5" ItemsSource="{Binding TaskListView}">
 			<ItemsControl.ItemTemplate>
 				<DataTemplate>
-					<Grid Margin="5,5,5,5" Background="#FF202020">
+					<Grid Margin="5,5,5,5" Background="#FF202020" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden">
 						<Grid.RowDefinitions>
 							<RowDefinition Height="Auto"/>
 							<RowDefinition Height="Auto"/>

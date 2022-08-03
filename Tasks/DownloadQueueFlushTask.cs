@@ -12,28 +12,43 @@ namespace ParallelPixivUtil2.Tasks
 		private static readonly ILog Logger = LogManager.GetLogger(nameof(DownloadQueueFlushTask));
 
 		private readonly IDictionary<string, IList<string>> DownloadQueue;
+		public IDictionary<string, IList<string>> RetryQueue = new Dictionary<string, IList<string>>();
 
 		public DownloadQueueFlushTask(IDictionary<string, IList<string>> queue) : base("Flush aria2 input queue") => DownloadQueue = queue;
 
 		protected override bool Run()
 		{
-			Logger.Debug("Processing queued download input list...");
-			var watch = new Stopwatch();
-			watch.Start();
+			try
+			{
+				Logger.Debug("Processing queued download input list...");
+				var watch = new Stopwatch();
+				watch.Start();
 
-			Task.WhenAll(DownloadQueue.Select((pair) =>
-				Task.Run(() =>
-				{
-					var builder = new StringBuilder();
-					foreach (string? item in pair.Value)
+				Task.WhenAll(DownloadQueue.Select((pair) =>
+					Task.Run(() =>
 					{
-						builder.Append(item);
-					}
-					File.AppendAllText(pair.Key, builder.ToString());
-				}))).Wait();
+						var builder = new StringBuilder();
+						foreach (string? item in pair.Value)
+							builder.Append(item);
+						try
+						{
+							File.AppendAllText(pair.Key, builder.ToString());
+						}
+						catch (Exception e)
+						{
+							RetryQueue.Add(pair);
+						}
+					}))).Wait();
 
-			watch.Stop();
-			Logger.DebugFormat("Processed queued download input list: Took {0}ms", watch.ElapsedMilliseconds);
+				watch.Stop();
+				Logger.DebugFormat("Processed queued download input list: Took {0}ms", watch.ElapsedMilliseconds);
+			}
+			catch (Exception e)
+			{
+				Logger.Error("An error occurred.", e);
+				return true;
+			}
+
 			return false;
 		}
 	}

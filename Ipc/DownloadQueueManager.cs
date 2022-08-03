@@ -31,7 +31,11 @@ namespace ParallelPixivUtil2.Ipc
 
 		private static void FlushQueue()
 		{
-			MainWindow.INSTANCE.StartTask(new DownloadQueueFlushTask(DownloadQueue));
+			var task = new DownloadQueueFlushTask(DownloadQueue);
+			DownloadQueue.Clear();
+			MainWindow.INSTANCE.StartTask(task);
+			foreach (var pair in task.RetryQueue)
+				DownloadQueue.Add(pair);
 		}
 	}
 }
