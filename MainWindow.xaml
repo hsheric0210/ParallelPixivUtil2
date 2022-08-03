@@ -28,10 +28,10 @@
 		</Grid.RowDefinitions>
 		<ProgressBar Grid.Row="0" x:Name="InitProgressBar" IsIndeterminate="{Binding IsCurrentProgressIndeterminate}" Minimum="0" Maximum="{Binding MaxProgress}" Value="{Binding Progress}" MinHeight="10" MinWidth="300" Margin="5,5,5,0"/>
 		<TextBlock Grid.Row="1" x:Name="InitProgressName" Text="{Binding ProgressDetails}"  Margin="10,0,5,5" VerticalAlignment="Center" HorizontalAlignment="Left" Foreground="White" Padding="0,0,0,10"/>
-		<ItemsControl Grid.Row="2"  x:Name="TaskList" Background="#FF333333" BorderThickness="1" MinHeight="200" BorderBrush="{x:Null}" Margin="5,5,5,5" ItemsSource="{Binding TaskListView}">
-			<ItemsControl.ItemTemplate>
-				<DataTemplate>
-					<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+		<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+			<ItemsControl Grid.Row="2"  x:Name="TaskList" Background="#FF333333" BorderThickness="1" MinHeight="200" BorderBrush="{x:Null}" Margin="5,5,5,5" ItemsSource="{Binding TaskListView}">
+				<ItemsControl.ItemTemplate>
+					<DataTemplate>
 						<Grid Margin="5,5,5,5" Background="#FF202020">
 							<Grid.RowDefinitions>
 								<RowDefinition Height="Auto"/>
@@ -47,9 +47,10 @@
 							<ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Minimum="0" Maximum="{Binding TotalProgress}" Value="{Binding CurrentProgress}" IsIndeterminate="{Binding Indeterminate}" MinHeight="10" MinWidth="50" HorizontalContentAlignment="Stretch" Margin="5,0,5,0"/>
 							<Label Grid.Row="2" Grid.Column="0" Content="{Binding Details}" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="Gray" Margin="10,0,0,0" Padding="0,10,0,5"/>
 						</Grid>
-					</ScrollViewer>
-				</DataTemplate>
-			</ItemsControl.ItemTemplate>
-		</ItemsControl>
+
+					</DataTemplate>
+				</ItemsControl.ItemTemplate>
+			</ItemsControl>
+		</ScrollViewer>
 	</Grid>
 </Window>
