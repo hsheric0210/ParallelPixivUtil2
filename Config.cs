@@ -23,10 +23,6 @@ namespace ParallelPixivUtil2
 		private const string DefaultDownloaderLocation = "Aria2c.exe";
 		private const string DownloaderParametersKey = "DownloaderParameters";
 		private const string DefaultDownloaderParameters = "-i\"${aria2InputPath}\\${memberID}.p${fileIndex}.txt\" -l\"${logPath}\\aria2.${memberID}.p${fileIndex}.log\" -j16 -x2 -m0 -Rtrue --allow-overwrite=true --auto-file-renaming=false --auto-save-interval=15 --conditional-get=true --retry-wait=10 --no-file-allocation-limit=2M";
-		private const string DownloadInputDelayKey = "DownloadInputFlushDelay";
-		private const int DefaultDownloadInputDelay = 1000;
-		private const string DownloadInputPeriodKey = "DownloadInputFlushPeriod";
-		private const int DefaultDownloadInputPeriod = 10000;
 
 		// Extractor
 
@@ -40,6 +36,26 @@ namespace ParallelPixivUtil2
 		private const string DefaultPostprocessorParameters = "-s 1 ${memberID} --sp=${page} --ep=${page} -x --pipe=${ipcAddress} --db=\"${databasePath}\\${memberID}.p${fileIndex}.db\" -l \"${logPath}\\Postprocessor.${memberID}.p${fileIndex}.log\"";
 		private const string MemberDataListParametersKey = "ExtractMemberDataListParameters";
 		private const string DefaultMemberDataListParameters = "-s q ${memberDataList} ${memberIDs} -x -l \"${logPath}\\dumpMembers.log\"";
+		private const string DownloadInputDelayKey = "DownloadInputFlushDelay";
+		private const int DefaultDownloadInputDelay = 1000;
+		private const string DownloadInputPeriodKey = "DownloadInputFlushPeriod";
+		private const int DefaultDownloadInputPeriod = 10000;
+
+		// Auto-archive
+		private const string AutoArchiveKey = "AutoArchive";
+		private const bool DefaultAutoArchive = false;
+
+		// Unarchiver
+		private const string UnarchiverExecutableKey = "UnarchiverExecutable";
+		private const string DefaultUnarchiverExecutable = "7z.exe";
+		private const string UnarchiverParameterKey = "UnarchiverParameter";
+		private const string DefaultUnarchiverParameter = "x -o${destination}\\${archiveName} ${archive}";
+
+		// Archiver
+		private const string ArchiverExecutableKey = "ArchiverExecutable";
+		private const string DefaultArchiverExecutable = "7z.exe";
+		private const string ArchiverParameterKey = "ArchiverParameter";
+		private const string DefaultArchiverParameter = "a ";
 
 		// FFmpeg
 
@@ -145,22 +161,27 @@ namespace ParallelPixivUtil2
 
 		private void WriteDefaultConfig()
 		{
+			// Parallellism
 			Ini.Write(MaxExtractorParallellismKey, DefaultMaxExtractorParallellism);
 			Ini.Write(MaxDownloaderParallellismKey, DefaultMaxDownloaderParallellism);
 			Ini.Write(MaxPostprocessorParallellismKey, DefaultMaxPostprocessorParallellism);
 			Ini.Write(MaxFFmpegParallellismKey, DefaultMaxFFmpegParallellism);
 
-			Ini.Write(DownloaderLocationKey, DefaultDownloaderLocation);
-			Ini.Write(DownloaderParametersKey, DefaultDownloaderParameters);
-
+			// Extractor & Post-processor
 			Ini.Write(ExtractorExecutableKey, DefaultExtractorExecutable);
 			Ini.Write(ExtractorScriptKey, DefaultExtractorScript);
 			Ini.Write(ExtractorParametersKey, DefaultExtractorParameters);
 			Ini.Write(PostprocessorParametersKey, DefaultPostprocessorParameters);
 			Ini.Write(MemberDataListParametersKey, DefaultMemberDataListParameters);
 
-			Ini.Write(FFmpegExecutableKey, DefaultFFmpegExecutableKey);
+			// Downloader
+			Ini.Write(DownloaderLocationKey, DefaultDownloaderLocation);
+			Ini.Write(DownloaderParametersKey, DefaultDownloaderParameters);
 
+			// FFmpeg
+			Ini.Write(FFmpegExecutableKey, DefaultFFmpegExecutableKey);
+			
+			// Misc
 			Ini.Write(MaxImagesPerPageKey, DefaultMaxImagesPerPage);
 			Ini.Write(MemberDataListFileKey, DefaultMemberDataListFile);
 			Ini.Write(ListFileKey, DefaultListFile);
