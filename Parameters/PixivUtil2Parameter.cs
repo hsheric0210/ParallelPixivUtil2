@@ -6,6 +6,11 @@
 
 		public override string ExtraParameters => IsPythonScript ? (PythonScript + ' ') : "";
 
+		public IDictionary<string, string> ExtraParameterTokens
+		{
+			get; private set;
+		} = new Dictionary<string, string>();
+
 		protected override IDictionary<string, string> ParameterTokens
 		{
 			get
@@ -31,6 +36,9 @@
 
 				if (MemberDataListFile != null)
 					dict["memberDataList"] = MemberDataListFile;
+
+				foreach ((string token, string value) in ExtraParameterTokens)
+					dict[token] = value;
 
 				return dict;
 			}

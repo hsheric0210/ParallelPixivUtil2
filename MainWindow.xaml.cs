@@ -56,7 +56,8 @@ namespace ParallelPixivUtil2
 		private void DoWork(object? sender, DoWorkEventArgs e)
 		{
 			ViewModel.ProgressDetails = "Parsing list file";
-			if (StartTask(new ParseListFileTask()))
+			var parseLines = new ParseListFileTask();
+			if (StartTask(parseLines))
 			{
 				var ipcConfig = new IpcSubParameter
 				{
@@ -85,6 +86,7 @@ namespace ParallelPixivUtil2
 					MemberDataListFile = memberDataListFile,
 					Ipc = ipcConfig
 				};
+				pixivutil2Params.ExtraParameterTokens["memberIDs"] = string.Join(' ', parseLines.Lines!);
 
 				var aria2Params = new Aria2Parameter(App.Configuration.DownloaderExecutable, App.ExtractorWorkingDirectory /* TODO: Fix this */, App.Configuration.LogPath, App.Configuration.Aria2InputPath, App.Configuration.DatabasePath)
 				{
