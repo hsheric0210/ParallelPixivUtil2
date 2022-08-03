@@ -13,14 +13,14 @@ namespace ParallelPixivUtil2.Ipc
 		private static IpcConnection? TaskRequest;
 
 		private static readonly IDictionary<byte[], string> IPCIdentifiers = new Dictionary<byte[], string>();
-		private static readonly IDictionary<string, string> IPCProgressBarMessages = new Dictionary<string, string>();
 		private static readonly IDictionary<int, Task<int>> FFmpegTasks = new Dictionary<int, Task<int>>();
 
 		public static event EventHandler<IpcEventArgs>? OnIpcOpened;
 		public static event EventHandler<IpcTotalNotifyEventArgs>? OnIpcTotalNotify;
 		public static event EventHandler<IpcEventArgs>? OnIpcProcessNotify;
 
-		private static SemaphoreSlim FFmpegSemaphore;
+		private static SemaphoreSlim FFmpegSemaphore = null!
+			;
 
 		public static void InitFFmpegSemaphore(int maxParallellism) => FFmpegSemaphore = new SemaphoreSlim(maxParallellism);
 
@@ -44,9 +44,6 @@ namespace ParallelPixivUtil2.Ipc
 						{
 							IPCIdentifiers[uidFrame.ToByteArray()] = newIdentifier;
 							OnIpcOpened?.Invoke(null, new IpcEventArgs(IpcType.Communication, newIdentifier));
-							// var bar = ProgressBarUtils.SpawnChild(config.MaxImagesPerPage, IPCProgressBarMessages[newIdentifier]);
-							// if (bar != null)
-							// 	IPCProgressBars[uidFrame.ToByteArray()] = bar;
 							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 						}
 						else
@@ -63,8 +60,6 @@ namespace ParallelPixivUtil2.Ipc
 						int total = message[0].ConvertToInt32();
 						IPCLogger.DebugFormat("{0} | IPC sent total job count : {1}", uidString, total);
 						OnIpcTotalNotify?.Invoke(null, new IpcTotalNotifyEventArgs(IpcType.Communication, identifier, total));
-						// if (IPCProgressBars.TryGetValue(uidFrame.ToByteArray(), out ChildProgressBar? bar))
-						// 	bar.MaxTicks = total;
 						socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 						break;
 					}
@@ -74,8 +69,6 @@ namespace ParallelPixivUtil2.Ipc
 						var status = (PixivDownloadResult)message[1].ConvertToInt32();
 						IPCLogger.DebugFormat("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), status);
 						OnIpcProcessNotify?.Invoke(null, new IpcEventArgs(IpcType.Communication, identifier));
-						// if (IPCProgressBars.TryGetValue(uidFrame.ToByteArray(), out ChildProgressBar? bar))
-						// 	bar.Tick();
 						socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 						break;
 					}
@@ -90,7 +83,7 @@ namespace ParallelPixivUtil2.Ipc
 			});
 		}
 
-		public static void InitTaskRequest(Config config, string extractorWorkingDirectory, string address)
+		public static void InitTaskRequest(string extractorWorkingDirectory, string address)
 		{
 			TaskRequest = IpcExtension.InitializeIPCSocket(address, (socket, uidFrame, group, message) =>
 			{
@@ -146,12 +139,8 @@ namespace ParallelPixivUtil2.Ipc
 							}
 
 							IPCLogger.InfoFormat("{0} | FFmpeg execution '{1}' is in process...", uidString, taskID);
-							// var bar = ProgressBarUtils.SpawnIndeterminateChild($"FFmpeg execution request by '{uidString}'");
-
-							// TODO: Register FFmpegTask to MainWindow
-
-							var task = new FFmpegTask(config, uidString, extractorWorkingDirectory, message.Select(msg => msg.ConvertToStringUTF8()), FFmpegSemaphore);
-							task.Start();
+							var task = new FFmpegTask(uidString, extractorWorkingDirectory, message.Select(msg => msg.ConvertToStringUTF8()), FFmpegSemaphore);
+							MainWindow.INSTANCE.StartTask(task);
 							return task.ExitCode;
 						}));
 						socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(taskID)));
@@ -183,7 +172,6 @@ namespace ParallelPixivUtil2.Ipc
 				}
 			});
 		}
-
 
 		public static void Unload()
 		{

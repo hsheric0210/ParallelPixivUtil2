@@ -11,7 +11,7 @@ namespace ParallelPixivUtil2
 		private readonly Dispatcher MainDispatcher;
 		private readonly CollectionViewSource taskListViewSource = new();
 
-		private bool indeterminate = false;
+		private bool indeterminate = true;
 		private int maxProgress = 100;
 		private int progress = 0;
 		private string progressDetails = "Initialization";

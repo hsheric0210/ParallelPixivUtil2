@@ -1,4 +1,5 @@
 ﻿using log4net;
+using ParallelPixivUtil2.Ipc;
 using System.IO;
 using System.Windows;
 
@@ -11,9 +12,14 @@ namespace ParallelPixivUtil2
 		public static Config Configuration
 		{
 			get; private set;
-		}
+		} = null!;
 
 		public static bool OnlyPostprocessing
+		{
+			get; private set;
+		}
+
+		public static bool NoExit
 		{
 			get; private set;
 		}
@@ -38,7 +44,7 @@ namespace ParallelPixivUtil2
 			catch (Exception e)
 			{
 				MessageBox.Show("Failed to load the configuration.\nFollowing exception occurred:\n" + e.ToString(), "Configuration load error", MessageBoxButton.OK, MessageBoxImage.Error);
-				Shutdown(1);
+				Environment.Exit(1);
 			}
 
 			string extractorExecutable = Configuration.ExtractorExecutable;
@@ -47,15 +53,15 @@ namespace ParallelPixivUtil2
 			if (!IsExtractorScript && RequireExists(extractorExecutable, "Extractor executable", silent: true))
 			{
 				MessageBox.Show("Neither PixivUtil2 executable nor PixivUtil2.py specified.", "Extractor not specified", MessageBoxButton.OK, MessageBoxImage.Error);
-				Shutdown(1);
+				Environment.Exit(1);
 			}
 
 			string extractorPath = IsExtractorScript ? extractorScript : extractorExecutable;
 			string? extractorWorkingDirectory = Path.GetDirectoryName(extractorPath);
-			if (string.IsNullOrWhiteSpace(ExtractorWorkingDirectory))
+			if (string.IsNullOrWhiteSpace(extractorWorkingDirectory))
 			{
 				MessageBox.Show($"Extractor directory unavailable ({extractorPath}).", "Extractor directory unavailable", MessageBoxButton.OK, MessageBoxImage.Error);
-				Shutdown(1);
+				Environment.Exit(1);
 			}
 			else
 			{
@@ -65,7 +71,7 @@ namespace ParallelPixivUtil2
 			string listFile = Configuration.ListFile;
 			string downloaderExecutable = Configuration.DownloaderExecutable;
 			if (RequireExists(listFile, "List file") || RequireExists(downloaderExecutable, "Downloader executable") || RequireExists($"{extractorWorkingDirectory}\\config.ini", "Extractor configuration", "\nIf this is the first run, make sure to run PixivUtil2 once to generate the default configuration file."))
-				Shutdown(1);
+				Environment.Exit(1);
 
 			CreateDirectoryIfNotExists(Configuration.LogPath);
 			CreateDirectoryIfNotExists(Configuration.Aria2InputPath);
@@ -82,7 +88,8 @@ namespace ParallelPixivUtil2
 		protected override void OnStartup(StartupEventArgs e)
 		{
 			string[] args = e.Args;
-			OnlyPostprocessing = args.Length > 0 && args[0].Equals("onlypp", StringComparison.OrdinalIgnoreCase);
+			OnlyPostprocessing = args.Any(s => s.Equals("onlypp", StringComparison.OrdinalIgnoreCase));
+			NoExit = args.Any(s => s.Equals("noexit", StringComparison.OrdinalIgnoreCase));
 		}
 
 		private static bool RequireExists(string fileName, string fileDetails, string? extraComments = null, bool silent = false)

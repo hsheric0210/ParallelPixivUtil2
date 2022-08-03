@@ -2,12 +2,6 @@
 {
 	public struct IpcSubParameter
 	{
-		public string Identifier
-		{
-			get;
-			set;
-		}
-
 		public string IPCCommunicationAddress
 		{
 			get;

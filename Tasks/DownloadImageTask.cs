@@ -1,4 +1,5 @@
-﻿using ParallelPixivUtil2.Parameters;
+﻿using log4net;
+using ParallelPixivUtil2.Parameters;
 using System.Diagnostics;
 
 // TODO: Add progress notification support to ExtractMemberPhase
@@ -7,9 +8,11 @@ namespace ParallelPixivUtil2.Tasks
 {
 	public class DownloadImageTask : AbstractTask
 	{
+		private static readonly ILog Logger = LogManager.GetLogger(nameof(DownloadImageTask));
+
 		private readonly Aria2Parameter Parameter;
 
-		public DownloadImageTask(Aria2Parameter parameter, MemberSubParameter member) : base($"Download member image of {member.MemberID} page {member.Page}") => Parameter = parameter;
+		public DownloadImageTask(Aria2Parameter parameter) : base($"Download member image of {parameter.TargetMemberID} page {parameter.TargetPage}") => Parameter = parameter;
 
 		protected override bool Run()
 		{
@@ -21,15 +24,14 @@ namespace ParallelPixivUtil2.Tasks
 				retriever.StartInfo.FileName = Parameter.FileName;
 				retriever.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
 				retriever.StartInfo.Arguments = Parameter.Parameter;
-				retriever.StartInfo.UseShellExecute = true;
-				retriever.StartInfo.WindowStyle = ProcessWindowStyle.Minimized;
+				retriever.StartInfo.UseShellExecute = false;
 				retriever.Start();
 				retriever.WaitForExit();
 				ExitCode = retriever.ExitCode;
 			}
 			catch (Exception ex)
 			{
-				ParallelPixivUtil2Main.MainLogger.Error("Error occurred while retrieveing member data list", ex);
+				Logger.Error("Error occurred while downloading member image", ex);
 				Details = $"Error: '{ex.Message}' (see log for details)";
 				return true;
 			}

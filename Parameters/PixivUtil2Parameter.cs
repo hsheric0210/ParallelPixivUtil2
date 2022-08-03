@@ -13,10 +13,8 @@
 				var dict = new Dictionary<string, string>
 				{
 					["logPath"] = LogPath,
+					["ipcAddress"] = Identifier + '|' + Ipc.IPCCommunicationAddress + '|' + Ipc.IPCTaskAddress
 				};
-
-				if (Ipc != null)
-					dict["ipcAddress"] = Ipc?.Identifier + '|' + Ipc?.IPCCommunicationAddress + '|' + Ipc?.IPCTaskAddress;
 
 				if (DatabasePath != null)
 					dict["databasePath"] = DatabasePath;
@@ -27,7 +25,7 @@
 				if (Member != null)
 				{
 					dict["memberID"] = Member?.MemberID.ToString()!;
-					dict["page"] = Member?.Page!.ToString()!;
+					dict["page"] = Member?.Page!.Page.ToString()!;
 					dict["fileIndex"] = Member?.Page!.FileIndex.ToString()!;
 				}
 
@@ -53,12 +51,17 @@
 			get; set;
 		}
 
-		public MemberSubParameter? Member
+		public string? Identifier
 		{
-			get;set;
+			get; set;
 		}
 
-		public IpcSubParameter? Ipc
+		public MemberSubParameter? Member
+		{
+			get; set;
+		}
+
+		public IpcSubParameter Ipc
 		{
 			get; set;
 		}
