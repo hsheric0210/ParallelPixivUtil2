@@ -31,7 +31,7 @@ namespace ParallelPixivUtil2.Ipc
 
 		private static void FlushQueue()
 		{
-			var task = new DownloadQueueFlushTask(DownloadQueue);
+			var task = new DownloadQueueFlushTask(new Dictionary<string, IList<string>>(DownloadQueue)); // create copy
 			DownloadQueue.Clear();
 			MainWindow.INSTANCE.StartTask(task);
 			foreach (var pair in task.RetryQueue)
