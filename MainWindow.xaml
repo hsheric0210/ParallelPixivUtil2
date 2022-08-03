@@ -31,21 +31,23 @@
 		<ItemsControl Grid.Row="2"  x:Name="TaskList" Background="#FF333333" BorderThickness="1" MinHeight="200" BorderBrush="{x:Null}" Margin="5,5,5,5" ItemsSource="{Binding TaskListView}">
 			<ItemsControl.ItemTemplate>
 				<DataTemplate>
-					<Grid Margin="5,5,5,5" Background="#FF202020" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Hidden">
-						<Grid.RowDefinitions>
-							<RowDefinition Height="Auto"/>
-							<RowDefinition Height="Auto"/>
-							<RowDefinition Height="Auto"/>
-						</Grid.RowDefinitions>
-						<Grid.ColumnDefinitions>
-							<ColumnDefinition Width="Auto"/>
-							<ColumnDefinition Width="*"/>
-						</Grid.ColumnDefinitions>
-						<Label Grid.Row="0" Grid.Column="0" Content="{Binding TaskName}" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="White" Margin="5,0,0,0" Padding="0,5,0,10"/>
-						<Label Grid.Row="0" Grid.Column="1" Foreground="Red" Content="Error occurred!" Style="{StaticResource ErrorDisplay}" HorizontalContentAlignment="Right" Padding="0,5,0,10" Margin="0,0,5,0"/>
-						<ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Minimum="0" Maximum="{Binding TotalProgress}" Value="{Binding CurrentProgress}" IsIndeterminate="{Binding Indeterminate}" MinHeight="10" MinWidth="50" HorizontalContentAlignment="Stretch" Margin="5,0,5,0"/>
-						<Label Grid.Row="2" Grid.Column="0" Content="{Binding Details}" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="Gray" Margin="10,0,0,0" Padding="0,10,0,5"/>
-					</Grid>
+					<ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+						<Grid Margin="5,5,5,5" Background="#FF202020">
+							<Grid.RowDefinitions>
+								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="Auto"/>
+							</Grid.RowDefinitions>
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="Auto"/>
+								<ColumnDefinition Width="*"/>
+							</Grid.ColumnDefinitions>
+							<Label Grid.Row="0" Grid.Column="0" Content="{Binding TaskName}" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="White" Margin="5,0,0,0" Padding="0,5,0,10"/>
+							<Label Grid.Row="0" Grid.Column="1" Foreground="Red" Content="Error occurred!" Style="{StaticResource ErrorDisplay}" HorizontalContentAlignment="Right" Padding="0,5,0,10" Margin="0,0,5,0"/>
+							<ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Minimum="0" Maximum="{Binding TotalProgress}" Value="{Binding CurrentProgress}" IsIndeterminate="{Binding Indeterminate}" MinHeight="10" MinWidth="50" HorizontalContentAlignment="Stretch" Margin="5,0,5,0"/>
+							<Label Grid.Row="2" Grid.Column="0" Content="{Binding Details}" HorizontalAlignment="Left" VerticalAlignment="Top" Foreground="Gray" Margin="10,0,0,0" Padding="0,10,0,5"/>
+						</Grid>
+					</ScrollViewer>
 				</DataTemplate>
 			</ItemsControl.ItemTemplate>
 		</ItemsControl>

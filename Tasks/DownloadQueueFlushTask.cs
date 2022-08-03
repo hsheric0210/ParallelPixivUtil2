@@ -36,6 +36,7 @@ namespace ParallelPixivUtil2.Tasks
 						}
 						catch (Exception e)
 						{
+							Logger.Warn("Exception occurred while writing. Added to retry queue.", e);
 							RetryQueue.Add(pair);
 						}
 					}))).Wait();
