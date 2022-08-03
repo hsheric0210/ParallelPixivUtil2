@@ -94,6 +94,7 @@ namespace ParallelPixivUtil2
 				ViewModel.ProgressDetails = "Retrieveing member data list";
 				if (StartTask(new MemberDataExtractionTask(pixivutil2Params)))
 				{
+					ViewModel.ProgressDetails = "Parsing member data list";
 					var parseDataList = new ParseMemberDataListTask(memberDataListFile);
 					if (StartTask(parseDataList))
 					{
@@ -104,6 +105,7 @@ namespace ParallelPixivUtil2
 							DownloadQueueManager.BeginTimer(App.Configuration.DownloadInputDelay, App.Configuration.DownloadInputPeriod);
 
 							// Run extractor
+							ViewModel.ProgressDetails = "Retrieveing member images";
 							RunForEachPage(parseDataList.Parsed, App.Configuration.MaxExtractorParallellism, pixivutil2Params with
 							{
 								ParameterFormat = App.Configuration.ExtractorParameters
@@ -123,6 +125,9 @@ namespace ParallelPixivUtil2
 							DownloadQueueManager.EndTimer();
 
 							// Run downloader
+							ViewModel.MaxProgress = 10;
+							ViewModel.IsCurrentProgressIndeterminate = true;
+							ViewModel.ProgressDetails = "Downloading member images";
 							RunForEachPage(parseDataList.Parsed, App.Configuration.MaxDownloaderParallellism, aria2Params, (long memberId, MemberPage page, Aria2Parameter param) =>
 							{
 								StartTask(new DownloadImageTask(param with
@@ -133,7 +138,12 @@ namespace ParallelPixivUtil2
 							});
 						}
 
+						// Reset Max-progress
+						ViewModel.IsCurrentProgressIndeterminate = false;
+						ViewModel.MaxProgress = parseDataList.TotalImageCount;
+
 						// Run post-processor
+						ViewModel.ProgressDetails = "Post-processing member images";
 						RunForEachPage(parseDataList.Parsed, App.Configuration.MaxPostprocessorParallellism, pixivutil2Params with
 						{
 							ParameterFormat = App.Configuration.PostprocessorParameters
@@ -207,6 +217,8 @@ namespace ParallelPixivUtil2
 		{
 			ViewModel.Progress = ViewModel.MaxProgress;
 			ViewModel.ProgressDetails = "Finished";
+			if (!App.NoExit)
+				Environment.Exit(0);
 		}
 	}
 }

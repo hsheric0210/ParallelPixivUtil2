@@ -19,7 +19,7 @@ namespace ParallelPixivUtil2.Tasks
 
 			Parameter = parameter;
 
-			Details = $"Retrieve member image of {parameter.Member?.MemberID} page {parameter.Member?.Page}";
+			Details = $"Retrieve member image of {parameter.Member?.MemberID} page {parameter.Member?.Page!.Page} (File index {parameter.Member?.Page!.FileIndex})";
 
 			MyIdentifier = parameter.Identifier;
 			IpcManager.OnIpcTotalNotify += OnTotalNotify;
@@ -35,6 +35,7 @@ namespace ParallelPixivUtil2.Tasks
 				retriever.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
 				retriever.StartInfo.Arguments = Parameter.Parameter;
 				retriever.StartInfo.UseShellExecute = false;
+				retriever.StartInfo.CreateNoWindow = true;
 				retriever.Start();
 				retriever.WaitForExit();
 				ExitCode = retriever.ExitCode;
@@ -54,13 +55,13 @@ namespace ParallelPixivUtil2.Tasks
 			if (args.Identifier != MyIdentifier)
 				return;
 
-			Indeterminate = false;
 			TotalProgress = args.Total;
+			Indeterminate = false;
 		}
 
 		public void OnProcessNotify(object? sender, IpcEventArgs args)
 		{
-			if (args.Identifier == MyIdentifier && !Indeterminate)
+			if (args.Identifier == MyIdentifier)
 				CurrentProgress++;
 		}
 

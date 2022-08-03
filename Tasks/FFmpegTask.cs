@@ -30,7 +30,8 @@ namespace ParallelPixivUtil2.Tasks
 				var ffmpeg = new Process();
 				ffmpeg.StartInfo.FileName = App.Configuration.FFmpegExecutable;
 				ffmpeg.StartInfo.WorkingDirectory = ExtractorWorkingDirectory;
-				ffmpeg.StartInfo.UseShellExecute = true;
+				ffmpeg.StartInfo.UseShellExecute = false;
+				ffmpeg.StartInfo.CreateNoWindow = true;
 				foreach (string param in Parameters)
 					ffmpeg.StartInfo.ArgumentList.Add(param);
 				ffmpeg.Start();

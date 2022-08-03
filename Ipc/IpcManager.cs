@@ -12,7 +12,7 @@ namespace ParallelPixivUtil2.Ipc
 		private static IpcConnection? Communication;
 		private static IpcConnection? TaskRequest;
 
-		private static readonly IDictionary<byte[], string> IPCIdentifiers = new Dictionary<byte[], string>();
+		private static readonly IDictionary<string, string> IPCIdentifiers = new Dictionary<string, string>();
 		private static readonly IDictionary<int, Task<int>> FFmpegTasks = new Dictionary<int, Task<int>>();
 
 		public static event EventHandler<IpcEventArgs>? OnIpcOpened;
@@ -29,7 +29,7 @@ namespace ParallelPixivUtil2.Ipc
 			Communication = IpcExtension.InitializeIPCSocket(address, (socket, uidFrame, group, message) =>
 			{
 				string uidString = uidFrame.ToUniqueIDString();
-				if (IPCIdentifiers.TryGetValue(uidFrame.ToByteArray(), out string? identifier))
+				if (IPCIdentifiers.TryGetValue(uidString, out string? identifier))
 					uidString += $" ({identifier})";
 				else
 					identifier = "Unregistered";
@@ -42,7 +42,7 @@ namespace ParallelPixivUtil2.Ipc
 						string pipeType = message[1].ConvertToStringUTF8();
 						if (pipeType.Equals("Comm", StringComparison.OrdinalIgnoreCase))
 						{
-							IPCIdentifiers[uidFrame.ToByteArray()] = newIdentifier;
+							IPCIdentifiers[uidString] = newIdentifier;
 							OnIpcOpened?.Invoke(null, new IpcEventArgs(IpcType.Communication, newIdentifier));
 							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 						}
@@ -88,7 +88,7 @@ namespace ParallelPixivUtil2.Ipc
 			TaskRequest = IpcExtension.InitializeIPCSocket(address, (socket, uidFrame, group, message) =>
 			{
 				string uidString = uidFrame.ToUniqueIDString();
-				if (IPCIdentifiers.TryGetValue(uidFrame.ToByteArray(), out string? identifier))
+				if (IPCIdentifiers.TryGetValue(uidString, out string? identifier))
 					uidString += $" ({identifier})";
 				else
 					identifier = "Unregistered";
@@ -101,7 +101,7 @@ namespace ParallelPixivUtil2.Ipc
 						string pipeType = message[1].ConvertToStringUTF8();
 						if (pipeType.Equals("Task", StringComparison.OrdinalIgnoreCase))
 						{
-							IPCIdentifiers[uidFrame.ToByteArray()] = newIdentifier;
+							IPCIdentifiers[uidString] = newIdentifier;
 							OnIpcOpened?.Invoke(null, new IpcEventArgs(IpcType.TaskRequest, newIdentifier));
 							socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 						}

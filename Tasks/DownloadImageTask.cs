@@ -2,8 +2,6 @@
 using ParallelPixivUtil2.Parameters;
 using System.Diagnostics;
 
-// TODO: Add progress notification support to ExtractMemberPhase
-
 namespace ParallelPixivUtil2.Tasks
 {
 	public class DownloadImageTask : AbstractTask
@@ -12,7 +10,7 @@ namespace ParallelPixivUtil2.Tasks
 
 		private readonly Aria2Parameter Parameter;
 
-		public DownloadImageTask(Aria2Parameter parameter) : base($"Download member image of {parameter.TargetMemberID} page {parameter.TargetPage}") => Parameter = parameter;
+		public DownloadImageTask(Aria2Parameter parameter) : base($"Download member image of {parameter.TargetMemberID} page {parameter.TargetPage!.Page} (File index {parameter.TargetPage!.FileIndex})") => Parameter = parameter;
 
 		protected override bool Run()
 		{
@@ -25,6 +23,7 @@ namespace ParallelPixivUtil2.Tasks
 				retriever.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
 				retriever.StartInfo.Arguments = Parameter.Parameter;
 				retriever.StartInfo.UseShellExecute = false;
+				retriever.StartInfo.CreateNoWindow = true;
 				retriever.Start();
 				retriever.WaitForExit();
 				ExitCode = retriever.ExitCode;

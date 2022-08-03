@@ -19,7 +19,7 @@ namespace ParallelPixivUtil2.Tasks
 
 			Parameter = parameter;
 
-			Details = $"Post-processing of {parameter.Member?.MemberID} page {parameter.Member?.Page}";
+			Details = $"Post-processing of {parameter.Member?.MemberID} page {parameter.Member?.Page!.Page} (File index {parameter.Member?.Page!.FileIndex})";
 
 			MyIdentifier = parameter.Identifier;
 			IpcManager.OnIpcTotalNotify += OnTotalNotify;
@@ -35,6 +35,7 @@ namespace ParallelPixivUtil2.Tasks
 				postProcessor.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
 				postProcessor.StartInfo.Arguments = Parameter.Parameter;
 				postProcessor.StartInfo.UseShellExecute = false;
+				postProcessor.StartInfo.CreateNoWindow = true;
 				postProcessor.Start();
 				postProcessor.WaitForExit();
 				ExitCode = postProcessor.ExitCode;
@@ -54,8 +55,8 @@ namespace ParallelPixivUtil2.Tasks
 			if (args.Identifier != MyIdentifier)
 				return;
 
-			Indeterminate = false;
 			TotalProgress = args.Total;
+			Indeterminate = false;
 		}
 
 		public void OnProcessNotify(object? sender, IpcEventArgs args)

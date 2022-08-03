@@ -23,6 +23,7 @@ namespace ParallelPixivUtil2.Tasks
 				retriever.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
 				retriever.StartInfo.Arguments = Parameter.Parameter;
 				retriever.StartInfo.UseShellExecute = false;
+				retriever.StartInfo.CreateNoWindow = true;
 				retriever.Start();
 				retriever.WaitForExit();
 				ExitCode = retriever.ExitCode;
