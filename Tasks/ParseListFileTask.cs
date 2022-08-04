@@ -1,7 +1,5 @@
 ﻿using log4net;
-using System.Diagnostics;
 using System.IO;
-using System.Text;
 
 // TODO: Add progress notification support to ExtractMemberPhase
 

@@ -1,5 +1,4 @@
 ﻿using log4net;
-using ParallelPixivUtil2.Ipc;
 using System.IO;
 using System.Windows;
 
