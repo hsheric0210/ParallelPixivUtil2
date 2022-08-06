@@ -10,11 +10,13 @@ namespace ParallelPixivUtil2.Tasks
 		private static readonly ILog Logger = LogManager.GetLogger(nameof(ArchiverTask));
 
 		private readonly ArchiverParameter Parameter;
+		private readonly bool ShowWindow;
 
 		public ArchiverTask(ArchiverParameter parameter, bool archive) : base("Running archiver/unarchiver")
 		{
 			Parameter = parameter;
 			Details = (archive ? "Archiving " : "Unarchiving ") + parameter.ArchiveFile;
+			ShowWindow = archive ? App.Configuration.ArchiverAllInOne : App.Configuration.UnarchiverAllInOne;
 		}
 
 		protected override bool Run()
@@ -26,16 +28,26 @@ namespace ParallelPixivUtil2.Tasks
 				archiver.StartInfo.WorkingDirectory = App.Configuration.ArchiveWorkingDirectory;
 				archiver.StartInfo.Arguments = Parameter.Parameter;
 				archiver.StartInfo.UseShellExecute = false;
-				archiver.StartInfo.CreateNoWindow = true;
-				archiver.StartInfo.RedirectStandardOutput = true;
-				archiver.StartInfo.RedirectStandardError = true;
-				archiver.Start();
-				archiver.OutputDataReceived += ReceiveProgress;
-				archiver.ErrorDataReceived += ReceiveProgress;
-				archiver.BeginErrorReadLine();
 
-				Indeterminate = false;
-				TotalProgress = 100;
+				if (!ShowWindow)
+				{
+					archiver.StartInfo.CreateNoWindow = !ShowWindow;
+					archiver.StartInfo.RedirectStandardOutput = true;
+					archiver.StartInfo.RedirectStandardError = true;
+				}
+
+				archiver.Start();
+
+				if (!ShowWindow)
+				{
+					archiver.OutputDataReceived += ReceiveProgress;
+					archiver.ErrorDataReceived += ReceiveProgress;
+					archiver.BeginOutputReadLine();
+					archiver.BeginErrorReadLine();
+
+					Indeterminate = false;
+					TotalProgress = 100;
+				}
 
 				archiver.WaitForExit();
 				ExitCode = archiver.ExitCode;

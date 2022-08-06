@@ -27,7 +27,8 @@ namespace ParallelPixivUtil2.Tasks
 					string destination = App.Configuration.Archive + Path.DirectorySeparatorChar + archiveName;
 					if (File.Exists(destination))
 						Logger.WarnFormat("'{0}' already exists in '{1}' - Renamed to '{2}.", archive, App.Configuration.Archive, FileUtils.PerformRollingFileRename(destination));
-					Logger.InfoFormat("Copy existing archive '{0}' to '{1}'.", archive, destination);
+					Logger.InfoFormat("Copy updated archive '{0}' to '{1}'.", archive, destination);
+					Details = $"Copy updated archive '{archive}' to '{destination}'.";
 					File.Copy(archive, destination);
 					Logger.InfoFormat("Copy finished for '{0}'.", archive);
 					CurrentProgress++;

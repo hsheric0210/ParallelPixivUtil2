@@ -55,104 +55,148 @@ namespace ParallelPixivUtil2
 
 		private void DoWork(object? sender, DoWorkEventArgs e)
 		{
-			ViewModel.ProgressDetails = "Parsing list file";
-			var parseLines = new ParseListFileTask();
-			if (StartTask(parseLines))
+			try
 			{
-				var ipcConfig = new IpcSubParameter
+				ViewModel.ProgressDetails = "Parsing list file";
+				var parseLines = new ParseListFileTask();
+				if (StartTask(parseLines))
 				{
-					IPCCommunicationAddress = $"tcp://localhost:{App.Configuration.IPCCommPort}",
-					IPCTaskAddress = $"tcp://localhost:{App.Configuration.IPCTaskPort}"
-				};
-
-				try
-				{
-					IpcManager.InitFFmpegSemaphore(App.Configuration.MaxFFmpegParallellism);
-					IpcManager.InitCommunication(ipcConfig.IPCCommunicationAddress);
-					IpcManager.InitTaskRequest(App.ExtractorWorkingDirectory, ipcConfig.IPCTaskAddress);
-				}
-				catch (Exception ex)
-				{
-					MainLogger.Error("Failed to setup IpcManager.", ex);
-					return;
-				}
-
-				string memberDataListFile = App.Configuration.MemberDataListFile;
-				var pixivutil2Params = new PixivUtil2Parameter(App.Configuration.ExtractorExecutable, "Python.exe", App.Configuration.ExtractorScript, App.IsExtractorScript, App.ExtractorWorkingDirectory, App.Configuration.LogPath)
-				{
-					ParameterFormat = App.Configuration.MemberDataListParameters,
-					Aria2InputPath = App.Configuration.Aria2InputPath,
-					DatabasePath = App.Configuration.DatabasePath,
-					MemberDataListFile = memberDataListFile,
-					Ipc = ipcConfig
-				};
-				string[] lines = parseLines.Lines!;
-				pixivutil2Params.ExtraParameterTokens["memberIDs"] = string.Join(' ', lines);
-
-				var aria2Params = new Aria2Parameter(App.Configuration.DownloaderExecutable, App.ExtractorWorkingDirectory /* TODO: Fix this */, App.Configuration.LogPath, App.Configuration.Aria2InputPath, App.Configuration.DatabasePath)
-				{
-					ParameterFormat = App.Configuration.DownloaderParameters
-				};
-
-				var archiverParams = new ArchiverParameter(App.Configuration.Archiver)
-				{
-					ParameterFormat = App.Configuration.ArchiverParameter
-				};
-
-				var unarchiverParams = new ArchiverParameter(App.Configuration.Unarchiver)
-				{
-					ParameterFormat = App.Configuration.UnarchiverParameter
-				};
-
-				if (App.Configuration.AutoArchive)
-				{
-					var task = new CopyExistingArchiveFromRepositoryTask(lines);
-					if (StartTask(task))
+					var ipcConfig = new IpcSubParameter
 					{
-						string[] movedFiles = task.MovedFileList.ToArray();
-						void RunUnarchiverIndividual(string file, ArchiverParameter param)
-						{
-							StartTask(new ArchiverTask(param with
-							{
-								ArchiveFile = file,
-							}, false));
-						}
+						IPCCommunicationAddress = $"tcp://localhost:{App.Configuration.IPCCommPort}",
+						IPCTaskAddress = $"tcp://localhost:{App.Configuration.IPCTaskPort}"
+					};
 
-						if (App.Configuration.UnarchiverAllInOne)
+					try
+					{
+						IpcManager.InitFFmpegSemaphore(App.Configuration.MaxFFmpegParallellism);
+						IpcManager.InitCommunication(ipcConfig.IPCCommunicationAddress);
+						IpcManager.InitTaskRequest(App.ExtractorWorkingDirectory, ipcConfig.IPCTaskAddress);
+					}
+					catch (Exception ex)
+					{
+						MainLogger.Error("Failed to setup IpcManager.", ex);
+						return;
+					}
+
+					string memberDataListFile = App.Configuration.MemberDataListFile;
+					var pixivutil2Params = new PixivUtil2Parameter(App.Configuration.ExtractorExecutable, "Python.exe", App.Configuration.ExtractorScript, App.IsExtractorScript, App.ExtractorWorkingDirectory, App.Configuration.LogPath)
+					{
+						ParameterFormat = App.Configuration.MemberDataListParameters,
+						Aria2InputPath = App.Configuration.Aria2InputPath,
+						DatabasePath = App.Configuration.DatabasePath,
+						MemberDataListFile = memberDataListFile,
+						Ipc = ipcConfig
+					};
+					string[] lines = parseLines.Lines!;
+					pixivutil2Params.ExtraParameterTokens["memberIDs"] = string.Join(' ', lines);
+
+					var aria2Params = new Aria2Parameter(App.Configuration.DownloaderExecutable, App.ExtractorWorkingDirectory /* TODO: Fix this */, App.Configuration.LogPath, App.Configuration.Aria2InputPath, App.Configuration.DatabasePath)
+					{
+						ParameterFormat = App.Configuration.DownloaderParameters
+					};
+
+					var archiverParams = new ArchiverParameter(App.Configuration.Archiver)
+					{
+						ParameterFormat = App.Configuration.ArchiverParameter
+					};
+
+					var unarchiverParams = new ArchiverParameter(App.Configuration.Unarchiver)
+					{
+						ParameterFormat = App.Configuration.UnarchiverParameter
+					};
+
+					if (App.Configuration.AutoArchive)
+					{
+						var task = new CopyExistingArchiveFromRepositoryTask(lines);
+						if (StartTask(task))
 						{
-							RunUnarchiverIndividual("", unarchiverParams with
+							ViewModel.ProgressDetails = "Moving existing archives from the repository";
+							string[] movedFiles = task.MovedFileList.ToArray();
+							void RunUnarchiverIndividual(string file, ArchiverParameter param)
 							{
-								ArchiveFiles = movedFiles
-							});
-						}
-						else
-						{
-							RunForEachLine(movedFiles, App.Configuration.UnarchiverParallellism, unarchiverParams, RunUnarchiverIndividual);
+								StartTask(new ArchiverTask(param with
+								{
+									ArchiveFile = file,
+								}, false));
+							}
+
+							ViewModel.ProgressDetails = "Unarchiving the existing archives";
+							if (App.Configuration.UnarchiverAllInOne)
+							{
+								RunUnarchiverIndividual("", unarchiverParams with
+								{
+									ArchiveFiles = movedFiles
+								});
+							}
+							else
+							{
+								RunForEachLine(movedFiles, App.Configuration.UnarchiverParallellism, unarchiverParams, RunUnarchiverIndividual);
+							}
 						}
 					}
-				}
 
-				ViewModel.ProgressDetails = "Retrieveing member data list";
-				if (StartTask(new MemberDataExtractionTask(pixivutil2Params)))
-				{
-					ViewModel.ProgressDetails = "Parsing member data list";
-					var parseDataList = new ParseMemberDataListTask(memberDataListFile);
-					if (StartTask(parseDataList))
+					ViewModel.ProgressDetails = "Retrieveing member data list";
+					if (StartTask(new MemberDataExtractionTask(pixivutil2Params)))
 					{
-						ViewModel.MaxProgress = parseDataList.TotalImageCount;
-
-						if (!App.OnlyPostprocessing)
+						ViewModel.ProgressDetails = "Parsing member data list";
+						var parseDataList = new ParseMemberDataListTask(memberDataListFile);
+						if (StartTask(parseDataList))
 						{
-							DownloadQueueManager.BeginTimer(App.Configuration.DownloadInputDelay, App.Configuration.DownloadInputPeriod);
+							ViewModel.MaxProgress = parseDataList.TotalImageCount;
 
-							// Run extractor
-							ViewModel.ProgressDetails = "Retrieveing member images";
-							RunForEachPage(parseDataList.Parsed, App.Configuration.MaxExtractorParallellism, pixivutil2Params with
+							if (!App.OnlyPostprocessing)
 							{
-								ParameterFormat = App.Configuration.ExtractorParameters
+								DownloadQueueManager.BeginTimer(App.Configuration.DownloadInputDelay, App.Configuration.DownloadInputPeriod);
+
+								// Run extractor
+								ViewModel.ProgressDetails = "Retrieveing member images";
+								RunForEachPage(parseDataList.Parsed, App.Configuration.MaxExtractorParallellism, pixivutil2Params with
+								{
+									ParameterFormat = App.Configuration.ExtractorParameters
+								}, (long memberId, MemberPage page, PixivUtil2Parameter param) =>
+								{
+									StartTask(new RetrieveImageTask(param with
+									{
+										Identifier = $"{memberId}_page{page.Page}",
+										Member = new MemberSubParameter
+										{
+											MemberID = memberId,
+											Page = page
+										}
+									}));
+								});
+
+								DownloadQueueManager.EndTimer();
+
+								// Run downloader
+								ViewModel.Progress = 0;
+								ViewModel.MaxProgress = 10;
+								ViewModel.IsCurrentProgressIndeterminate = true;
+								ViewModel.ProgressDetails = "Downloading member images";
+								RunForEachPage(parseDataList.Parsed, App.Configuration.MaxDownloaderParallellism, aria2Params, (long memberId, MemberPage page, Aria2Parameter param) =>
+								{
+									StartTask(new DownloadImageTask(param with
+									{
+										TargetMemberID = memberId,
+										TargetPage = page
+									}));
+								});
+							}
+
+							// Reset Max-progress
+							ViewModel.IsCurrentProgressIndeterminate = false;
+							ViewModel.Progress = 0;
+							ViewModel.MaxProgress = parseDataList.TotalImageCount;
+
+							// Run post-processor
+							ViewModel.ProgressDetails = "Post-processing member images";
+							RunForEachPage(parseDataList.Parsed, App.Configuration.MaxPostprocessorParallellism, pixivutil2Params with
+							{
+								ParameterFormat = App.Configuration.PostprocessorParameters
 							}, (long memberId, MemberPage page, PixivUtil2Parameter param) =>
 							{
-								StartTask(new RetrieveImageTask(param with
+								StartTask(new PostprocessingTask(param with
 								{
 									Identifier = $"{memberId}_page{page.Page}",
 									Member = new MemberSubParameter
@@ -163,76 +207,47 @@ namespace ParallelPixivUtil2
 								}));
 							});
 
-							DownloadQueueManager.EndTimer();
-
-							// Run downloader
-							ViewModel.MaxProgress = 10;
-							ViewModel.IsCurrentProgressIndeterminate = true;
-							ViewModel.ProgressDetails = "Downloading member images";
-							RunForEachPage(parseDataList.Parsed, App.Configuration.MaxDownloaderParallellism, aria2Params, (long memberId, MemberPage page, Aria2Parameter param) =>
+							if (App.Configuration.AutoArchive)
 							{
-								StartTask(new DownloadImageTask(param with
+								ViewModel.ProgressDetails = "Re-enumerating the directories";
+								var task = new ReenumerateDirectoryTask(lines);
+								if (StartTask(task))
 								{
-									TargetMemberID = memberId,
-									TargetPage = page
-								}));
-							});
-						}
-
-						// Reset Max-progress
-						ViewModel.IsCurrentProgressIndeterminate = false;
-						ViewModel.MaxProgress = parseDataList.TotalImageCount;
-
-						// Run post-processor
-						ViewModel.ProgressDetails = "Post-processing member images";
-						RunForEachPage(parseDataList.Parsed, App.Configuration.MaxPostprocessorParallellism, pixivutil2Params with
-						{
-							ParameterFormat = App.Configuration.PostprocessorParameters
-						}, (long memberId, MemberPage page, PixivUtil2Parameter param) =>
-						{
-							StartTask(new PostprocessingTask(param with
-							{
-								Identifier = $"{memberId}_page{page.Page}",
-								Member = new MemberSubParameter
-								{
-									MemberID = memberId,
-									Page = page
-								}
-							}));
-						});
-
-						if (App.Configuration.AutoArchive)
-						{
-							var task = new ReenumerateDirectoryTask(lines);
-							if (StartTask(task))
-							{
-								string[] detFiles = task.DetectedDirectoryList.ToArray();
-								void RunArchiverIndividual(string file, ArchiverParameter param)
-								{
-									StartTask(new ArchiverTask(param with
+									string[] detFiles = task.DetectedDirectoryList.ToArray();
+									void RunArchiverIndividual(string file, ArchiverParameter param)
 									{
-										ArchiveFile = file,
-									}, true));
-								}
+										StartTask(new ArchiverTask(param with
+										{
+											ArchiveFile = file,
+										}, true));
+									}
 
-								if (App.Configuration.ArchiverAllInOne)
-								{
-									RunArchiverIndividual("", archiverParams with
+									ViewModel.ProgressDetails = "Re-archiving archive directories";
+									if (App.Configuration.ArchiverAllInOne)
 									{
-										ArchiveFiles = detFiles
-									});
-								}
-								else
-								{
-									RunForEachLine(detFiles, App.Configuration.ArchiverParallellism, archiverParams, RunArchiverIndividual);
-								}
+										RunArchiverIndividual("", archiverParams with
+										{
+											ArchiveFiles = detFiles
+										});
+									}
+									else
+									{
+										RunForEachLine(detFiles, App.Configuration.ArchiverParallellism, archiverParams, RunArchiverIndividual);
+									}
 
-								StartTask(new CopyArchiveToReporitoryTask(detFiles));
+									ViewModel.ProgressDetails = "Copy updated archives to the repository";
+									StartTask(new CopyArchiveToReporitoryTask(detFiles));
+								}
 							}
 						}
 					}
 				}
 			}
+			catch (Exception exc)
+			{
+				MainLogger.Fatal("Exception caught on the main thread!", exc);
+			}
+
 		}
 
 		private static void RunForEachLine<T>(IEnumerable<string> list, int parallellismLimit, T parameter, Action<string, T> callback)
