@@ -27,8 +27,10 @@ namespace ParallelPixivUtil2.Tasks
 				archiver.StartInfo.Arguments = Parameter.Parameter;
 				archiver.StartInfo.UseShellExecute = false;
 				archiver.StartInfo.CreateNoWindow = true;
+				archiver.StartInfo.RedirectStandardOutput = true;
 				archiver.StartInfo.RedirectStandardError = true;
 				archiver.Start();
+				archiver.OutputDataReceived += ReceiveProgress;
 				archiver.ErrorDataReceived += ReceiveProgress;
 				archiver.BeginErrorReadLine();
 
@@ -51,8 +53,15 @@ namespace ParallelPixivUtil2.Tasks
 		public void ReceiveProgress(object? sender, DataReceivedEventArgs args)
 		{
 			string? line = args.Data?.Trim();
+			if (line == null)
+				return;
+
+			int percIndex = line.IndexOf('%');
+			if (percIndex < 2)
+				return;
+
 			// '  93% 41'
-			if (line?.Length >= 3 && line[2] == '%' && int.TryParse(line[..2], out int prog))
+			if (int.TryParse(line.AsSpan(percIndex - 2, 2), out int prog))
 				CurrentProgress = prog;
 		}
 	}

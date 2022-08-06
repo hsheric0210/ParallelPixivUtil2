@@ -57,7 +57,7 @@ namespace ParallelPixivUtil2
 		private const string UnarchiverExecutableKey = "UnarchiverExecutable";
 		private const string DefaultUnarchiverExecutable = "7z.exe";
 		private const string UnarchiverParameterKey = "UnarchiverParameter";
-		private const string DefaultUnarchiverParameter = "x -o${destination}\\${archiveName} ${archive}";
+		private const string DefaultUnarchiverParameter = "x -bsp2 -o${destination}\\${archiveName} ${archive}";
 		private const string UnarchiverAllInOneKey = "UnarchiverAllInOne";
 		private const bool DefaultUnarchiverAllInOne = false;
 
