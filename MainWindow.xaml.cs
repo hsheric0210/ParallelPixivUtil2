@@ -86,12 +86,51 @@ namespace ParallelPixivUtil2
 					MemberDataListFile = memberDataListFile,
 					Ipc = ipcConfig
 				};
-				pixivutil2Params.ExtraParameterTokens["memberIDs"] = string.Join(' ', parseLines.Lines!);
+				string[] lines = parseLines.Lines!;
+				pixivutil2Params.ExtraParameterTokens["memberIDs"] = string.Join(' ', lines);
 
 				var aria2Params = new Aria2Parameter(App.Configuration.DownloaderExecutable, App.ExtractorWorkingDirectory /* TODO: Fix this */, App.Configuration.LogPath, App.Configuration.Aria2InputPath, App.Configuration.DatabasePath)
 				{
 					ParameterFormat = App.Configuration.DownloaderParameters
 				};
+
+				var archiverParams = new ArchiverParameter(App.Configuration.Archiver)
+				{
+					ParameterFormat = App.Configuration.ArchiverParameter
+				};
+
+				var unarchiverParams = new ArchiverParameter(App.Configuration.Unarchiver)
+				{
+					ParameterFormat = App.Configuration.UnarchiverParameter
+				};
+
+				if (App.Configuration.AutoArchive)
+				{
+					var task = new CopyExistingArchiveFromRepositoryTask(lines);
+					if (StartTask(task))
+					{
+						string[] movedFiles = task.MovedFileList.ToArray();
+						void RunUnarchiverIndividual(string file, ArchiverParameter param)
+						{
+							StartTask(new ArchiverTask(param with
+							{
+								ArchiveFile = file,
+							}, false));
+						}
+
+						if (App.Configuration.UnarchiverAllInOne)
+						{
+							RunUnarchiverIndividual("", unarchiverParams with
+							{
+								ArchiveFiles = movedFiles
+							});
+						}
+						else
+						{
+							RunForEachLine(movedFiles, App.Configuration.UnarchiverParallellism, unarchiverParams, RunUnarchiverIndividual);
+						}
+					}
+				}
 
 				ViewModel.ProgressDetails = "Retrieveing member data list";
 				if (StartTask(new MemberDataExtractionTask(pixivutil2Params)))
@@ -161,9 +200,63 @@ namespace ParallelPixivUtil2
 								}
 							}));
 						});
+
+						if (App.Configuration.AutoArchive)
+						{
+							var task = new ReenumerateDirectoryTask(lines);
+							if (StartTask(task))
+							{
+								string[] detFiles = task.DetectedDirectoryList.ToArray();
+								void RunArchiverIndividual(string file, ArchiverParameter param)
+								{
+									StartTask(new ArchiverTask(param with
+									{
+										ArchiveFile = file,
+									}, true));
+								}
+
+								if (App.Configuration.ArchiverAllInOne)
+								{
+									RunArchiverIndividual("", archiverParams with
+									{
+										ArchiveFiles = detFiles
+									});
+								}
+								else
+								{
+									RunForEachLine(detFiles, App.Configuration.ArchiverParallellism, archiverParams, RunArchiverIndividual);
+								}
+
+								StartTask(new CopyArchiveToReporitoryTask(detFiles));
+							}
+						}
 					}
 				}
 			}
+		}
+
+		private static void RunForEachLine<T>(IEnumerable<string> list, int parallellismLimit, T parameter, Action<string, T> callback)
+	where T : AbstractParameter
+		{
+			using var semaphore = new SemaphoreSlim(parallellismLimit);
+			var tasks = new List<Task>();
+			foreach (string line in list)
+			{
+				semaphore.Wait();
+				tasks.Add(Task.Run(() =>
+				{
+					try
+					{
+						callback(line, parameter);
+					}
+					finally
+					{
+						semaphore.Release();
+					}
+				}));
+			}
+
+			Task.WhenAll(tasks).Wait();
 		}
 
 		private static void RunForEachPage<T>(IDictionary<long, ICollection<MemberPage>> memberPageList, int parallellismLimit, T parameter, Action<long, MemberPage, T> callback)

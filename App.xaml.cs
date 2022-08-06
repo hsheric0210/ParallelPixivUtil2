@@ -75,6 +75,12 @@ namespace ParallelPixivUtil2
 			CreateDirectoryIfNotExists(Configuration.LogPath);
 			CreateDirectoryIfNotExists(Configuration.Aria2InputPath);
 			CreateDirectoryIfNotExists(Configuration.DatabasePath);
+			if (Configuration.AutoArchive)
+			{
+				CreateDirectoryIfNotExists(Configuration.Archive);
+				CreateDirectoryIfNotExists(Configuration.ArchiveBackup);
+				CreateDirectoryIfNotExists(Configuration.ArchiveWorkingDirectory);
+			}
 
 
 			int workerCount = Math.Max(Configuration.MaxExtractorParallellism, Math.Max(Configuration.MaxDownloaderParallellism, Configuration.MaxPostprocessorParallellism)) + Configuration.MaxFFmpegParallellism + 4; // 4 for fallback

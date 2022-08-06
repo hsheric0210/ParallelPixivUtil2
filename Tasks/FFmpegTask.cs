@@ -14,12 +14,13 @@ namespace ParallelPixivUtil2.Tasks
 		private readonly IEnumerable<string> Parameters;
 		private readonly SemaphoreSlim? FFmpegSemaphore;
 
-		public FFmpegTask(string requestedBy, string workingDirectory, IEnumerable<string> parameters, SemaphoreSlim? ffmpegSemaphore) : base("FFmpeg execution requested by " + requestedBy)
+		public FFmpegTask(string requestedBy, string workingDirectory, IEnumerable<string> parameters, SemaphoreSlim? ffmpegSemaphore) : base("FFmpeg")
 		{
 			RequestedBy = requestedBy;
 			ExtractorWorkingDirectory = workingDirectory;
 			Parameters = parameters;
 			FFmpegSemaphore = ffmpegSemaphore;
+			Details = "FFmpeg execution requested by " + requestedBy;
 		}
 
 		protected override bool Run()

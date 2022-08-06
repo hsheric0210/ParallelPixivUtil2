@@ -16,6 +16,11 @@ namespace ParallelPixivUtil2
 		private const int DefaultMaxPostprocessorParallellism = 16;
 		private const string MaxFFmpegParallellismKey = "FFmpegParallellism";
 		private const int DefaultMaxFFmpegParallellism = 4;
+		private const string MaxUnarchiverParallellismKey = "UnarchiverParallellism";
+		private const int DefaultUnarchiverParallellism = 4;
+
+		private const string MaxArchiverParallellismKey = "ArchiverParallellism";
+		private const int DefaultArchiverParallellism = 1;
 
 		// Downloader
 
@@ -42,20 +47,44 @@ namespace ParallelPixivUtil2
 		private const int DefaultDownloadInputPeriod = 10000;
 
 		// Auto-archive
+
 		private const string AutoArchiveKey = "AutoArchive";
+
 		private const bool DefaultAutoArchive = false;
 
 		// Unarchiver
+
 		private const string UnarchiverExecutableKey = "UnarchiverExecutable";
 		private const string DefaultUnarchiverExecutable = "7z.exe";
 		private const string UnarchiverParameterKey = "UnarchiverParameter";
 		private const string DefaultUnarchiverParameter = "x -o${destination}\\${archiveName} ${archive}";
+		private const string UnarchiverAllInOneKey = "UnarchiverAllInOne";
+		private const bool DefaultUnarchiverAllInOne = false;
 
 		// Archiver
+
 		private const string ArchiverExecutableKey = "ArchiverExecutable";
-		private const string DefaultArchiverExecutable = "7z.exe";
+		private const string DefaultArchiverExecutable = "Hybrid7z.exe";
 		private const string ArchiverParameterKey = "ArchiverParameter";
-		private const string DefaultArchiverParameter = "a ";
+		private const string DefaultArchiverParameter = "-nopause ${archives}";
+		private const string ArchiverAllInOneKey = "ArchiverAllInOne";
+		private const bool DefaultArchiverAllInOne = true;
+
+		// Archive
+
+		private const string ArchiveKey = "Archive";
+		private const string ArchiveBackupKey = "ArchiveBackup";
+		private const string ArchiveWorkingDirectoryKey = "ArchiveWorkingDirectory";
+		private const string ArchiveFormatWildcardKey = "ArchiveFormatWildcard";
+		private const string DefaultArchiveFormatWildcard = "*.7z";
+		private const string ArchiveFormatRegexKey = "ArchiveFormatRegex";
+		private const string DefaultArchiveFormatRegex = "\\d+\\.7z";
+		private const string DirectoryFormatWildcardKey = "DirectoryFormatWildcard";
+		private const string DefaultDirectoryFormatWildcard = "*";
+		private const string DirectoryFormatRegexKey = "DirectoryFormatRegex";
+		private const string DefaultDirectoryFormatRegex = "^\\d+$";
+		private const string ArchiveSearchTopDirectoryOnlyKey = "ArchiveSearchTopDirectoryOnly";
+		private const bool DefaultArchiveSearchTopDirectoryOnly = false;
 
 		// FFmpeg
 
@@ -128,11 +157,53 @@ namespace ParallelPixivUtil2
 
 		public int DownloadInputPeriod => ParseInt(DownloadInputPeriodKey, DefaultDownloadInputPeriod);
 
+		public bool AutoArchive => ParseBool(AutoArchiveKey, DefaultAutoArchive);
+
+		public bool ArchiveSearchTopDirectoryOnly => ParseBool(ArchiveSearchTopDirectoryOnlyKey, DefaultArchiveSearchTopDirectoryOnly);
+
+		public string Unarchiver => ParsePath(UnarchiverExecutableKey, DefaultUnarchiverExecutable);
+
+		public string UnarchiverParameter => ParseString(UnarchiverParameterKey, DefaultUnarchiverParameter);
+
+		public string Archiver => ParsePath(ArchiverExecutableKey, DefaultArchiverExecutable);
+
+		public string ArchiverParameter => ParseString(ArchiverParameterKey, DefaultArchiverParameter);
+
+		public string Archive => ParsePath(ArchiveKey, "");
+
+		public string ArchiveBackup => ParsePath(ArchiveBackupKey, "");
+
+		public string ArchiveWorkingDirectory => ParsePath(ArchiveWorkingDirectoryKey, "");
+
+		public string ArchiveFormatWildcard => ParseString(ArchiveFormatWildcardKey, DefaultArchiveFormatWildcard);
+
+		public string ArchiveFormatRegex => ParseString(ArchiveFormatRegexKey, DefaultArchiveFormatRegex);
+
+		public string DirectoryFormatWildcard => ParseString(DirectoryFormatWildcardKey, DefaultDirectoryFormatWildcard);
+
+		public string DirectoryFormatRegex => ParseString(DirectoryFormatRegexKey, DefaultDirectoryFormatRegex);
+
+		public int UnarchiverParallellism => ParseInt(MaxUnarchiverParallellismKey, DefaultUnarchiverParallellism);
+
+		public int ArchiverParallellism => ParseInt(MaxArchiverParallellismKey, DefaultArchiverParallellism);
+
+		public bool UnarchiverAllInOne => ParseBool(UnarchiverAllInOneKey, DefaultUnarchiverAllInOne);
+
+		public bool ArchiverAllInOne => ParseBool(ArchiverAllInOneKey, DefaultArchiverAllInOne);
+
 		public Config()
 		{
 			Ini = new IniFile(FileName);
 			if (!File.Exists(FileName))
 				WriteDefaultConfig();
+		}
+
+		private bool ParseBool(string key, bool defaultValue)
+		{
+			if (Ini.KeyExists(key) && bool.TryParse(Ini.Read(key), out bool result))
+				return result;
+			Ini.Write(key, defaultValue);
+			return defaultValue;
 		}
 
 		private int ParseInt(string key, int defaultValue)
@@ -180,7 +251,30 @@ namespace ParallelPixivUtil2
 
 			// FFmpeg
 			Ini.Write(FFmpegExecutableKey, DefaultFFmpegExecutableKey);
-			
+
+			// Archive
+			Ini.Write(AutoArchiveKey, DefaultAutoArchive);
+
+			// Unarchiver
+			Ini.Write(UnarchiverExecutableKey, DefaultUnarchiverExecutable);
+			Ini.Write(UnarchiverParameterKey, DefaultUnarchiverParameter);
+			Ini.Write(UnarchiverAllInOneKey, DefaultUnarchiverAllInOne);
+
+			// Archiver
+			Ini.Write(ArchiverExecutableKey, DefaultArchiverExecutable);
+			Ini.Write(ArchiverParameterKey, DefaultArchiverParameter);
+			Ini.Write(ArchiverAllInOneKey, DefaultArchiverAllInOne);
+
+
+			Ini.Write(ArchiveKey, "");
+			Ini.Write(ArchiveBackupKey, "");
+			Ini.Write(ArchiveWorkingDirectoryKey, "");
+			Ini.Write(ArchiveFormatWildcardKey, DefaultArchiveFormatWildcard);
+			Ini.Write(ArchiveFormatRegexKey, DefaultArchiveFormatRegex);
+			Ini.Write(DirectoryFormatWildcardKey, DefaultDirectoryFormatWildcard);
+			Ini.Write(DirectoryFormatRegexKey, DefaultDirectoryFormatRegex);
+			Ini.Write(ArchiveSearchTopDirectoryOnlyKey, DefaultArchiveSearchTopDirectoryOnly);
+
 			// Misc
 			Ini.Write(MaxImagesPerPageKey, DefaultMaxImagesPerPage);
 			Ini.Write(MemberDataListFileKey, DefaultMemberDataListFile);

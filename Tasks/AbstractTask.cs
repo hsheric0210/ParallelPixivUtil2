@@ -5,7 +5,7 @@
 		private string taskName = "Generic";
 		private int totalProgress = 10;
 		private int currentProgress;
-		private string details = "Unknown";
+		private string details = "";
 		private bool indeterminate = true;
 		private bool error;
 
@@ -84,7 +84,7 @@
 
 		public void RunInternal()
 		{
-			error = Run();
+			Error = Run();
 			Details += " - Finished!";
 			Indeterminate = false;
 			CurrentProgress = TotalProgress;
