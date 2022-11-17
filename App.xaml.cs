@@ -69,6 +69,11 @@ namespace ParallelPixivUtil2
 			try
 			{
 				Configuration = JsonSerializer.Deserialize<Config>(File.ReadAllText(configName))!;
+
+				// Sanitize paths
+				Configuration.LogFolderName = Path.GetFullPath(Configuration.LogFolderName);
+				Configuration.DownloadListFolderName = Path.GetFullPath(Configuration.DownloadListFolderName);
+				Configuration.DatabaseFolderName = Path.GetFullPath(Configuration.DatabaseFolderName);
 			}
 			catch (Exception e)
 			{
