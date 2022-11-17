@@ -37,6 +37,7 @@
 				<RowDefinition Height="Auto"/>
 				<RowDefinition Height="Auto"/>
 				<RowDefinition Height="*"/>
+				<RowDefinition Height="Auto"/>
 			</Grid.RowDefinitions>
 			<Grid.ColumnDefinitions>
 				<ColumnDefinition Width="*"/>
@@ -82,6 +83,15 @@
 					</DataTemplate>
 				</ItemsControl.ItemTemplate>
 			</ItemsControl>
+			<Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Background="#FF202020" Margin="5,5,5,5">
+				<Grid.RowDefinitions>
+					<RowDefinition Height="Auto"/>
+				</Grid.RowDefinitions>
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="*"/>
+				</Grid.ColumnDefinitions>
+				<Button Name="ReloadConfigButton" Grid.Row="0" Grid.Column="0" Content="Reload config" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="3,3,3,3" FontFamily="NanumGothic" FontSize="10" Padding="4,1,4,1" Click="ReloadConfig"/>
+			</Grid>
 		</Grid>
 	</ScrollViewer>
 </Window>

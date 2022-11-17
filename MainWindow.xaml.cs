@@ -330,5 +330,14 @@ namespace ParallelPixivUtil2
 			if (!App.NoExit)
 				Environment.Exit(0);
 		}
+
+		private void ReloadConfig(object? sender, RoutedEventArgs e)
+		{
+			ReloadConfigButton.Content = "Reload config...";
+			ReloadConfigButton.IsEnabled = false;
+			App.ConfigInit();
+			ReloadConfigButton.Content = "Reload config";
+			ReloadConfigButton.IsEnabled = true;
+		}
 	}
 }

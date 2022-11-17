@@ -20,6 +20,11 @@ namespace ParallelPixivUtil2
 			get; private set;
 		} = null!;
 
+		public static string ConfigName
+		{
+			get; private set;
+		} = "parallel.json";
+
 		public static bool OnlyPostprocessing
 		{
 			get; private set;
@@ -40,6 +45,25 @@ namespace ParallelPixivUtil2
 			get; private set;
 		} = null!;
 
+		public static void ConfigInit()
+		{
+			// Initialize Configuration
+			try
+			{
+				Configuration = JsonSerializer.Deserialize<Config>(File.ReadAllText(ConfigName))!;
+
+				// Sanitize paths
+				Configuration.LogFolderName = Path.GetFullPath(Configuration.LogFolderName);
+				Configuration.DownloadListFolderName = Path.GetFullPath(Configuration.DownloadListFolderName);
+				Configuration.DatabaseFolderName = Path.GetFullPath(Configuration.DatabaseFolderName);
+			}
+			catch (Exception e)
+			{
+				MessageBox.Show("Failed to load the configuration.\nFollowing exception occurred:\n" + e.ToString(), "Configuration load error", MessageBoxButton.OK, MessageBoxImage.Error);
+				Environment.Exit(1);
+			}
+		}
+
 		public App()
 		{
 			var cmdline = Environment.GetCommandLineArgs();
@@ -48,6 +72,7 @@ namespace ParallelPixivUtil2
 			string? configName = cmdline.Where(line => line.StartsWith("-c")).Select(line => line[2..]).FirstOrDefault();
 			if (configName == null)
 				configName = "parallel.json";
+			ConfigName = configName;
 
 			OnlyPostprocessing = cmdline.Any(s => s.Equals("-pp", StringComparison.OrdinalIgnoreCase));
 			NoExit = cmdline.Any(s => s.Equals("-noexit", StringComparison.OrdinalIgnoreCase));
@@ -65,21 +90,7 @@ namespace ParallelPixivUtil2
 				Environment.Exit(1);
 			}
 
-			// Initialize Configuration
-			try
-			{
-				Configuration = JsonSerializer.Deserialize<Config>(File.ReadAllText(configName))!;
-
-				// Sanitize paths
-				Configuration.LogFolderName = Path.GetFullPath(Configuration.LogFolderName);
-				Configuration.DownloadListFolderName = Path.GetFullPath(Configuration.DownloadListFolderName);
-				Configuration.DatabaseFolderName = Path.GetFullPath(Configuration.DatabaseFolderName);
-			}
-			catch (Exception e)
-			{
-				MessageBox.Show("Failed to load the configuration.\nFollowing exception occurred:\n" + e.ToString(), "Configuration load error", MessageBoxButton.OK, MessageBoxImage.Error);
-				Environment.Exit(1);
-			}
+			ConfigInit();
 
 			string extractorExecutable = Configuration.Extractor.Executable;
 			string extractorScript = Configuration.Extractor.PythonScript;
