@@ -21,10 +21,10 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
-				Regex? pattern = string.IsNullOrWhiteSpace(App.Configuration.ArchiveFormatRegex) ? null : new Regex(App.Configuration.ArchiveFormatRegex);
+				Regex? pattern = string.IsNullOrWhiteSpace(App.Configuration.Archive.ArchiveFormatRegex) ? null : new Regex(App.Configuration.Archive.ArchiveFormatRegex);
 				var archiveList = new HashSet<string>();
-				Logger.InfoFormat("Searching pattern {0} from {1}...", App.Configuration.ArchiveFormatWildcard, App.Configuration.Archive);
-				foreach (string path in Directory.EnumerateFiles(App.Configuration.Archive, App.Configuration.ArchiveFormatWildcard, App.Configuration.ArchiveSearchTopDirectoryOnly ? SearchOption.TopDirectoryOnly : SearchOption.AllDirectories))
+				Logger.InfoFormat("Searching pattern {0} from {1}...", App.Configuration.Archive.ArchiveFormatWildcard, App.Configuration.Archive);
+				foreach (string path in Directory.EnumerateFiles(App.Configuration.Archive.ArchiveFolder, App.Configuration.Archive.ArchiveFormatWildcard, App.Configuration.Archive.SearchTopDirectoryOnly ? SearchOption.TopDirectoryOnly : SearchOption.AllDirectories))
 				{
 					if (FileList.Contains(Path.GetFileNameWithoutExtension(path)) && pattern?.IsMatch(Path.GetFileName(path)) != false)
 						archiveList.Add(path);
@@ -38,10 +38,10 @@ namespace ParallelPixivUtil2.Tasks
 				foreach (string archive in archiveList)
 				{
 					string archiveName = Path.GetFileName(archive);
-					string destination = App.Configuration.ArchiveBackup + Path.DirectorySeparatorChar + archiveName;
+					string destination = App.Configuration.Archive.BackupFolder + Path.DirectorySeparatorChar + archiveName;
 
 					if (File.Exists(destination))
-						Logger.WarnFormat("'{0}' already exists in '{1}' - Renamed to '{2}'.", archiveName, App.Configuration.ArchiveBackup, FileUtils.PerformRollingFileRename(destination));
+						Logger.WarnFormat("'{0}' already exists in '{1}' - Renamed to '{2}'.", archiveName, App.Configuration.Archive.BackupFolder, FileUtils.PerformRollingFileRename(destination));
 					Details = $"Copy existing archive '{archive}' to '{destination}'.";
 
 					File.Copy(archive, destination);

@@ -22,7 +22,7 @@ namespace ParallelPixivUtil2.Parameters
 			{
 				var dict = new Dictionary<string, string>
 				{
-					["destination"] = App.Configuration.ArchiveWorkingDirectory,
+					["destination"] = App.Configuration.Archive.WorkingFolder,
 				};
 
 				if (ArchiveFile != null)

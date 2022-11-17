@@ -63,13 +63,13 @@ namespace ParallelPixivUtil2
 				{
 					var ipcConfig = new IpcSubParameter
 					{
-						IPCCommunicationAddress = $"tcp://localhost:{App.Configuration.IPCCommPort}",
-						IPCTaskAddress = $"tcp://localhost:{App.Configuration.IPCTaskPort}"
+						IPCCommunicationAddress = $"tcp://localhost:{App.Configuration.Magics.IPCCommunicatePort}",
+						IPCTaskAddress = $"tcp://localhost:{App.Configuration.Magics.IPCTaskPort}"
 					};
 
 					try
 					{
-						IpcManager.InitFFmpegSemaphore(App.Configuration.MaxFFmpegParallellism);
+						IpcManager.InitFFmpegSemaphore(App.Configuration.Parallelism.MaxFFmpegParallellism);
 						IpcManager.InitCommunication(ipcConfig.IPCCommunicationAddress);
 						IpcManager.InitTaskRequest(App.ExtractorWorkingDirectory, ipcConfig.IPCTaskAddress);
 					}
@@ -79,31 +79,31 @@ namespace ParallelPixivUtil2
 						return;
 					}
 
-					string memberDataListFile = App.Configuration.MemberDataListFile;
-					var pixivutil2Params = new PixivUtil2Parameter(App.Configuration.ExtractorExecutable, "Python.exe", App.Configuration.ExtractorScript, App.IsExtractorScript, App.ExtractorWorkingDirectory, App.Configuration.LogPath)
+					string memberDataListFile = App.Configuration.MemberListFileName;
+					var pixivutil2Params = new PixivUtil2Parameter(App.Configuration.Extractor.Executable, "Python.exe", App.Configuration.Extractor.PythonScript, App.IsExtractorScript, App.ExtractorWorkingDirectory, App.Configuration.LogFolderName)
 					{
-						ParameterFormat = App.Configuration.MemberDataListParameters,
-						Aria2InputPath = App.Configuration.Aria2InputPath,
-						DatabasePath = App.Configuration.DatabasePath,
+						ParameterFormat = App.Configuration.MemberListExtractor.Parameters,
+						Aria2InputPath = App.Configuration.DownloadListFolderName,
+						DatabasePath = App.Configuration.DatabaseFolderName,
 						MemberDataListFile = memberDataListFile,
 						Ipc = ipcConfig
 					};
 					string[] lines = parseLines.Lines!;
 					pixivutil2Params.ExtraParameterTokens["memberIDs"] = string.Join(' ', lines);
 
-					var aria2Params = new Aria2Parameter(App.Configuration.DownloaderExecutable, App.ExtractorWorkingDirectory /* TODO: Fix this */, App.Configuration.LogPath, App.Configuration.Aria2InputPath, App.Configuration.DatabasePath)
+					var aria2Params = new Aria2Parameter(App.Configuration.Downloader.Executable, App.ExtractorWorkingDirectory /* TODO: Fix this */, App.Configuration.LogFolderName, App.Configuration.DownloadListFolderName, App.Configuration.DatabaseFolderName)
 					{
-						ParameterFormat = App.Configuration.DownloaderParameters
+						ParameterFormat = App.Configuration.Downloader.Parameters
 					};
 
-					var archiverParams = new ArchiverParameter(App.Configuration.Archiver)
+					var archiverParams = new ArchiverParameter(App.Configuration.Archiver.Executable)
 					{
-						ParameterFormat = App.Configuration.ArchiverParameter
+						ParameterFormat = App.Configuration.Archiver.Parameters
 					};
 
-					var unarchiverParams = new ArchiverParameter(App.Configuration.Unarchiver)
+					var unarchiverParams = new ArchiverParameter(App.Configuration.Unarchiver.Executable)
 					{
-						ParameterFormat = App.Configuration.UnarchiverParameter
+						ParameterFormat = App.Configuration.Unarchiver.Parameters
 					};
 
 					if (App.Configuration.AutoArchive)
@@ -122,7 +122,7 @@ namespace ParallelPixivUtil2
 							}
 
 							ViewModel.ProgressDetails = "Unarchiving the existing archives";
-							if (App.Configuration.UnarchiverAllInOne)
+							if (App.Configuration.Unarchiver.AllAtOnce)
 							{
 								RunUnarchiverIndividual("", unarchiverParams with
 								{
@@ -131,7 +131,7 @@ namespace ParallelPixivUtil2
 							}
 							else
 							{
-								RunForEachLine(movedFiles, App.Configuration.UnarchiverParallellism, unarchiverParams, RunUnarchiverIndividual);
+								RunForEachLine(movedFiles, App.Configuration.Parallelism.MaxUnarchiverParallellism, unarchiverParams, RunUnarchiverIndividual);
 							}
 						}
 					}
@@ -147,13 +147,13 @@ namespace ParallelPixivUtil2
 
 							if (!App.OnlyPostprocessing)
 							{
-								DownloadQueueManager.BeginTimer(App.Configuration.DownloadInputDelay, App.Configuration.DownloadInputPeriod);
+								DownloadQueueManager.BeginTimer(App.Configuration.Extractor.FlushDelay, App.Configuration.Extractor.FlushPeriod);
 
 								// Run extractor
 								ViewModel.ProgressDetails = "Retrieveing member images";
-								RunForEachPage(parseDataList.Parsed, App.Configuration.MaxExtractorParallellism, pixivutil2Params with
+								RunForEachPage(parseDataList.Parsed, App.Configuration.Parallelism.MaxExtractorParallellism, pixivutil2Params with
 								{
-									ParameterFormat = App.Configuration.ExtractorParameters
+									ParameterFormat = App.Configuration.Extractor.Parameters
 								}, (long memberId, MemberPage page, PixivUtil2Parameter param) =>
 								{
 									StartTask(new RetrieveImageTask(param with
@@ -174,7 +174,7 @@ namespace ParallelPixivUtil2
 								ViewModel.MaxProgress = 10;
 								ViewModel.IsCurrentProgressIndeterminate = true;
 								ViewModel.ProgressDetails = "Downloading member images";
-								RunForEachPage(parseDataList.Parsed, App.Configuration.MaxDownloaderParallellism, aria2Params, (long memberId, MemberPage page, Aria2Parameter param) =>
+								RunForEachPage(parseDataList.Parsed, App.Configuration.Parallelism.MaxDownloaderParallellism, aria2Params, (long memberId, MemberPage page, Aria2Parameter param) =>
 								{
 									StartTask(new DownloadImageTask(param with
 									{
@@ -191,9 +191,9 @@ namespace ParallelPixivUtil2
 
 							// Run post-processor
 							ViewModel.ProgressDetails = "Post-processing member images";
-							RunForEachPage(parseDataList.Parsed, App.Configuration.MaxPostprocessorParallellism, pixivutil2Params with
+							RunForEachPage(parseDataList.Parsed, App.Configuration.Parallelism.MaxPostprocessorParallellism, pixivutil2Params with
 							{
-								ParameterFormat = App.Configuration.PostprocessorParameters
+								ParameterFormat = App.Configuration.Postprocessor.Parameters
 							}, (long memberId, MemberPage page, PixivUtil2Parameter param) =>
 							{
 								StartTask(new PostprocessingTask(param with
@@ -223,7 +223,7 @@ namespace ParallelPixivUtil2
 									}
 
 									ViewModel.ProgressDetails = "Re-archiving archive directories";
-									if (App.Configuration.ArchiverAllInOne)
+									if (App.Configuration.Archiver.AllAtOnce)
 									{
 										RunArchiverIndividual("", archiverParams with
 										{
@@ -232,7 +232,7 @@ namespace ParallelPixivUtil2
 									}
 									else
 									{
-										RunForEachLine(detFiles, App.Configuration.ArchiverParallellism, archiverParams, RunArchiverIndividual);
+										RunForEachLine(detFiles, App.Configuration.Parallelism.MaxArchiverParallellism, archiverParams, RunArchiverIndividual);
 									}
 
 									ViewModel.ProgressDetails = "Copy updated archives to the repository";

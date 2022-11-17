@@ -30,12 +30,14 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
+				bool show = App.Configuration.Postprocessor.ShowWindow;
+
 				var postProcessor = new Process();
 				postProcessor.StartInfo.FileName = Parameter.FileName;
 				postProcessor.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
 				postProcessor.StartInfo.Arguments = Parameter.Parameter;
-				postProcessor.StartInfo.UseShellExecute = false;
-				postProcessor.StartInfo.CreateNoWindow = true;
+				postProcessor.StartInfo.UseShellExecute = show;
+				postProcessor.StartInfo.CreateNoWindow = !show;
 				postProcessor.Start();
 				postProcessor.WaitForExit();
 				ExitCode = postProcessor.ExitCode;

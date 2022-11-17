@@ -4,286 +4,319 @@ namespace ParallelPixivUtil2
 {
 	public class Config
 	{
-		private const string FileName = "parallel.ini";
-
-		// Parallellism
-
-		private const string MaxExtractorParallellismKey = "MaxPixivUtil2ExtractParallellism";
-		private const int DefaultMaxExtractorParallellism = 8;
-		private const string MaxDownloaderParallellismKey = "MaxAria2Parallellism";
-		private const int DefaultMaxDownloaderParallellism = 4;
-		private const string MaxPostprocessorParallellismKey = "MaxPixivUtil2PostprocessParallellism";
-		private const int DefaultMaxPostprocessorParallellism = 16;
-		private const string MaxFFmpegParallellismKey = "FFmpegParallellism";
-		private const int DefaultMaxFFmpegParallellism = 4;
-		private const string MaxUnarchiverParallellismKey = "UnarchiverParallellism";
-		private const int DefaultUnarchiverParallellism = 4;
-
-		private const string MaxArchiverParallellismKey = "ArchiverParallellism";
-		private const int DefaultArchiverParallellism = 1;
-
-		// Downloader
-
-		private const string DownloaderLocationKey = "DownloaderExecutable";
-		private const string DefaultDownloaderLocation = "Aria2c.exe";
-		private const string DownloaderParametersKey = "DownloaderParameters";
-		private const string DefaultDownloaderParameters = "-i\"${aria2InputPath}\\${memberID}.p${fileIndex}.txt\" -l\"${logPath}\\aria2.${memberID}.p${fileIndex}.log\" -j16 -x2 -m0 -Rtrue --allow-overwrite=true --auto-file-renaming=false --auto-save-interval=15 --conditional-get=true --retry-wait=10 --no-file-allocation-limit=2M";
-
-		// Extractor
-
-		private const string ExtractorExecutableKey = "ExtractorExecutable";
-		private const string DefaultExtractorExecutable = "PixivUtil2.exe";
-		private const string ExtractorScriptKey = "ExtractorScript";
-		private const string DefaultExtractorScript = "PixivUtil2.py";
-		private const string ExtractorParametersKey = "ExtractorParameters";
-		private const string DefaultExtractorParameters = "-s 1 ${memberID} --sp=${page} --ep=${page} -x --pipe=${ipcAddress} --db=\"${databasePath}\\${memberID}.p${fileIndex}.db\" -l \"${logPath}\\Extractor.${memberID}.p${fileIndex}.log\" --aria2=\"${aria2InputPath}\\${memberID}.p${fileIndex}.txt\"";
-		private const string PostprocessorParametersKey = "PostprocessorParameters";
-		private const string DefaultPostprocessorParameters = "-s 1 ${memberID} --sp=${page} --ep=${page} -x --pipe=${ipcAddress} --db=\"${databasePath}\\${memberID}.p${fileIndex}.db\" -l \"${logPath}\\Postprocessor.${memberID}.p${fileIndex}.log\"";
-		private const string MemberDataListParametersKey = "ExtractMemberDataListParameters";
-		private const string DefaultMemberDataListParameters = "-s q ${memberDataList} ${memberIDs} -x -l \"${logPath}\\dumpMembers.log\"";
-		private const string DownloadInputDelayKey = "DownloadInputFlushDelay";
-		private const int DefaultDownloadInputDelay = 1000;
-		private const string DownloadInputPeriodKey = "DownloadInputFlushPeriod";
-		private const int DefaultDownloadInputPeriod = 10000;
-
-		// Auto-archive
-
-		private const string AutoArchiveKey = "AutoArchive";
-
-		private const bool DefaultAutoArchive = false;
-
-		// Unarchiver
-
-		private const string UnarchiverExecutableKey = "UnarchiverExecutable";
-		private const string DefaultUnarchiverExecutable = "7z.exe";
-		private const string UnarchiverParameterKey = "UnarchiverParameter";
-		private const string DefaultUnarchiverParameter = "x -bsp2 -o${destination}\\${archiveName} ${archive}";
-		private const string UnarchiverAllInOneKey = "UnarchiverAllInOne";
-		private const bool DefaultUnarchiverAllInOne = false;
-
-		// Archiver
-
-		private const string ArchiverExecutableKey = "ArchiverExecutable";
-		private const string DefaultArchiverExecutable = "Hybrid7z.exe";
-		private const string ArchiverParameterKey = "ArchiverParameter";
-		private const string DefaultArchiverParameter = "-nopause ${archives}";
-		private const string ArchiverAllInOneKey = "ArchiverAllInOne";
-		private const bool DefaultArchiverAllInOne = true;
-
-		// Archive
-
-		private const string ArchiveKey = "Archive";
-		private const string ArchiveBackupKey = "ArchiveBackup";
-		private const string ArchiveWorkingDirectoryKey = "ArchiveWorkingDirectory";
-		private const string ArchiveFormatWildcardKey = "ArchiveFormatWildcard";
-		private const string DefaultArchiveFormatWildcard = "*.7z";
-		private const string ArchiveFormatRegexKey = "ArchiveFormatRegex";
-		private const string DefaultArchiveFormatRegex = "\\d+\\.7z";
-		private const string DirectoryFormatWildcardKey = "DirectoryFormatWildcard";
-		private const string DefaultDirectoryFormatWildcard = "*";
-		private const string DirectoryFormatRegexKey = "DirectoryFormatRegex";
-		private const string DefaultDirectoryFormatRegex = "^\\d+$";
-		private const string ArchiveSearchTopDirectoryOnlyKey = "ArchiveSearchTopDirectoryOnly";
-		private const bool DefaultArchiveSearchTopDirectoryOnly = false;
-
-		// FFmpeg
-
-		private const string FFmpegExecutableKey = "FFmpeg";
-		private const string DefaultFFmpegExecutableKey = "FFmpeg.exe";
-
-		// Miscellaneous
-
-		private const string MaxImagesPerPageKey = "MaxImagesPerPage";
-		private const int DefaultMaxImagesPerPage = 48;
-		private const string MemberDataListFileKey = "MemberDataFile";
-		private const string DefaultMemberDataListFile = "memberdata.txt";
-		private const string ListFileKey = "ListFile";
-		private const string DefaultListFile = "list.txt";
-		private const string IPCCommPortKey = "IPCCommunicatePort";
-		private const int DefaultIPCCommPort = 6974;
-		private const string IPCTaskPortKey = "IPCTaskPort";
-		private const int DefaultIPCTaskPort = 7469;
-
-		private const string LogPathKey = "LogFolder";
-		private const string DefaultLogPath = "logs";
-		private const string Aria2InputPathKey = "Aria2InputFileFolder";
-		private const string DefaultAria2InputPath = "aria2";
-		private const string DatabasePathKey = "DatabaseFolder";
-		private const string DefaultDatabasePath = "databases";
-
-		private readonly IniFile Ini;
-
-		public int MaxExtractorParallellism => ParseInt(MaxExtractorParallellismKey, DefaultMaxExtractorParallellism);
-
-		public int MaxDownloaderParallellism => ParseInt(MaxDownloaderParallellismKey, DefaultMaxDownloaderParallellism);
-
-		public int MaxPostprocessorParallellism => ParseInt(MaxPostprocessorParallellismKey, DefaultMaxPostprocessorParallellism);
-
-		public int MaxFFmpegParallellism => ParseInt(MaxFFmpegParallellismKey, DefaultMaxFFmpegParallellism);
-
-		public string ExtractorExecutable => ParsePath(ExtractorExecutableKey, DefaultExtractorExecutable);
-
-		public string ExtractorScript => ParsePath(ExtractorScriptKey, DefaultExtractorScript);
-
-		public string DownloaderExecutable => ParsePath(DownloaderLocationKey, DefaultDownloaderLocation);
-
-		public string DownloaderParameters => ParseString(DownloaderParametersKey, DefaultDownloaderParameters);
-
-		public int MaxImagesPerPage => ParseInt(MaxImagesPerPageKey, DefaultMaxImagesPerPage);
-
-		public string FFmpegExecutable => ParsePath(FFmpegExecutableKey, DefaultFFmpegExecutableKey);
-
-		public string MemberDataListFile => ParsePath(MemberDataListFileKey, DefaultMemberDataListFile);
-
-		public string ListFile => ParsePath(ListFileKey, DefaultListFile);
-
-		public int IPCCommPort => ParseInt(IPCCommPortKey, DefaultIPCCommPort);
-
-		public int IPCTaskPort => ParseInt(IPCTaskPortKey, DefaultIPCTaskPort);
-
-		public string ExtractorParameters => ParseString(ExtractorParametersKey, DefaultExtractorParameters);
-
-		public string PostprocessorParameters => ParseString(PostprocessorParametersKey, DefaultPostprocessorParameters);
-
-		public string MemberDataListParameters => ParseString(MemberDataListParametersKey, DefaultMemberDataListParameters);
-
-		public string LogPath => ParsePath(LogPathKey, DefaultLogPath);
-
-		public string Aria2InputPath => ParsePath(Aria2InputPathKey, DefaultAria2InputPath);
-
-		public string DatabasePath => ParsePath(DatabasePathKey, DefaultDatabasePath);
-
-		public int DownloadInputDelay => ParseInt(DownloadInputDelayKey, DefaultDownloadInputDelay);
-
-		public int DownloadInputPeriod => ParseInt(DownloadInputPeriodKey, DefaultDownloadInputPeriod);
-
-		public bool AutoArchive => ParseBool(AutoArchiveKey, DefaultAutoArchive);
-
-		public bool ArchiveSearchTopDirectoryOnly => ParseBool(ArchiveSearchTopDirectoryOnlyKey, DefaultArchiveSearchTopDirectoryOnly);
-
-		public string Unarchiver => ParsePath(UnarchiverExecutableKey, DefaultUnarchiverExecutable);
-
-		public string UnarchiverParameter => ParseString(UnarchiverParameterKey, DefaultUnarchiverParameter);
-
-		public string Archiver => ParsePath(ArchiverExecutableKey, DefaultArchiverExecutable);
-
-		public string ArchiverParameter => ParseString(ArchiverParameterKey, DefaultArchiverParameter);
-
-		public string Archive => ParsePath(ArchiveKey, "");
-
-		public string ArchiveBackup => ParsePath(ArchiveBackupKey, "");
-
-		public string ArchiveWorkingDirectory => ParsePath(ArchiveWorkingDirectoryKey, "");
-
-		public string ArchiveFormatWildcard => ParseString(ArchiveFormatWildcardKey, DefaultArchiveFormatWildcard);
-
-		public string ArchiveFormatRegex => ParseString(ArchiveFormatRegexKey, DefaultArchiveFormatRegex);
-
-		public string DirectoryFormatWildcard => ParseString(DirectoryFormatWildcardKey, DefaultDirectoryFormatWildcard);
-
-		public string DirectoryFormatRegex => ParseString(DirectoryFormatRegexKey, DefaultDirectoryFormatRegex);
-
-		public int UnarchiverParallellism => ParseInt(MaxUnarchiverParallellismKey, DefaultUnarchiverParallellism);
-
-		public int ArchiverParallellism => ParseInt(MaxArchiverParallellismKey, DefaultArchiverParallellism);
-
-		public bool UnarchiverAllInOne => ParseBool(UnarchiverAllInOneKey, DefaultUnarchiverAllInOne);
-
-		public bool ArchiverAllInOne => ParseBool(ArchiverAllInOneKey, DefaultArchiverAllInOne);
-
-		public Config()
+		public string MemberListFileName
 		{
-			Ini = new IniFile(FileName);
-			if (!File.Exists(FileName))
-				WriteDefaultConfig();
-		}
+			get; set;
+		} = "memberdata.txt";
 
-		private bool ParseBool(string key, bool defaultValue)
+		public string ListFileName
 		{
-			if (Ini.KeyExists(key) && bool.TryParse(Ini.Read(key), out bool result))
-				return result;
-			Ini.Write(key, defaultValue);
-			return defaultValue;
-		}
+			get; set;
+		} = "list.txt";
 
-		private int ParseInt(string key, int defaultValue)
+		public string LogFolderName
 		{
-			if (Ini.KeyExists(key) && int.TryParse(Ini.Read(key), out int result))
-				return result;
-			Ini.Write(key, defaultValue);
-			return defaultValue;
-		}
+			get; set;
+		} = "logs";
 
-		private string ParseString(string key, string defaultValue)
+		public string DownloadListFolderName
 		{
-			if (Ini.KeyExists(key))
-				return Ini.Read(key);
-			Ini.Write(key, defaultValue);
-			return defaultValue;
-		}
+			get; set;
+		} = "dl_list";
 
-		private string ParsePath(string key, string defaultValue)
+		public string DatabaseFolderName
 		{
-			string path = ParseString(key, defaultValue);
-			if (Path.IsPathFullyQualified(path))
-				return path;
-			return Path.GetFullPath(path);
-		}
+			get; set;
+		} = "db";
 
-		private void WriteDefaultConfig()
+		public ParallelismSection Parallelism
 		{
-			// Parallellism
-			Ini.Write(MaxExtractorParallellismKey, DefaultMaxExtractorParallellism);
-			Ini.Write(MaxDownloaderParallellismKey, DefaultMaxDownloaderParallellism);
-			Ini.Write(MaxPostprocessorParallellismKey, DefaultMaxPostprocessorParallellism);
-			Ini.Write(MaxFFmpegParallellismKey, DefaultMaxFFmpegParallellism);
+			get; set;
+		} = new ParallelismSection();
 
-			// Extractor & Post-processor
-			Ini.Write(ExtractorExecutableKey, DefaultExtractorExecutable);
-			Ini.Write(ExtractorScriptKey, DefaultExtractorScript);
-			Ini.Write(ExtractorParametersKey, DefaultExtractorParameters);
-			Ini.Write(PostprocessorParametersKey, DefaultPostprocessorParameters);
-			Ini.Write(MemberDataListParametersKey, DefaultMemberDataListParameters);
+		public MemberListExtractorSection MemberListExtractor
+		{
+			get; set;
+		} = new MemberListExtractorSection();
 
-			// Downloader
-			Ini.Write(DownloaderLocationKey, DefaultDownloaderLocation);
-			Ini.Write(DownloaderParametersKey, DefaultDownloaderParameters);
+		public ExtractorSection Extractor
+		{
+			get; set;
+		} = new ExtractorSection();
 
-			// FFmpeg
-			Ini.Write(FFmpegExecutableKey, DefaultFFmpegExecutableKey);
+		public DownloaderSection Downloader
+		{
+			get; set;
+		} = new DownloaderSection();
 
-			// Archive
-			Ini.Write(AutoArchiveKey, DefaultAutoArchive);
+		public PostprocessorSection Postprocessor
+		{
+			get; set;
+		} = new PostprocessorSection();
 
-			// Unarchiver
-			Ini.Write(UnarchiverExecutableKey, DefaultUnarchiverExecutable);
-			Ini.Write(UnarchiverParameterKey, DefaultUnarchiverParameter);
-			Ini.Write(UnarchiverAllInOneKey, DefaultUnarchiverAllInOne);
+		public ArchiverSection Archiver
+		{
+			get; set;
+		} = new ArchiverSection();
 
-			// Archiver
-			Ini.Write(ArchiverExecutableKey, DefaultArchiverExecutable);
-			Ini.Write(ArchiverParameterKey, DefaultArchiverParameter);
-			Ini.Write(ArchiverAllInOneKey, DefaultArchiverAllInOne);
+		public UnarchiverSection Unarchiver
+		{
+			get; set;
+		} = new UnarchiverSection();
 
+		public FFmpegSection FFmpeg
+		{
+			get; set;
+		} = new FFmpegSection();
 
-			Ini.Write(ArchiveKey, "");
-			Ini.Write(ArchiveBackupKey, "");
-			Ini.Write(ArchiveWorkingDirectoryKey, "");
-			Ini.Write(ArchiveFormatWildcardKey, DefaultArchiveFormatWildcard);
-			Ini.Write(ArchiveFormatRegexKey, DefaultArchiveFormatRegex);
-			Ini.Write(DirectoryFormatWildcardKey, DefaultDirectoryFormatWildcard);
-			Ini.Write(DirectoryFormatRegexKey, DefaultDirectoryFormatRegex);
-			Ini.Write(ArchiveSearchTopDirectoryOnlyKey, DefaultArchiveSearchTopDirectoryOnly);
+		public bool AutoArchive
+		{
+			get; set;
+		} = false;
 
-			// Misc
-			Ini.Write(MaxImagesPerPageKey, DefaultMaxImagesPerPage);
-			Ini.Write(MemberDataListFileKey, DefaultMemberDataListFile);
-			Ini.Write(ListFileKey, DefaultListFile);
-			Ini.Write(IPCCommPortKey, DefaultIPCCommPort);
+		public ArchiveSection Archive
+		{
+			get; set;
+		} = new ArchiveSection();
 
-			Ini.Write(LogPathKey, DefaultLogPath);
-			Ini.Write(Aria2InputPathKey, DefaultAria2InputPath);
-			Ini.Write(DatabasePathKey, DefaultDatabasePath);
-		}
+		public MagicSection Magics
+		{
+			get; set;
+		} = new MagicSection();
+	}
+
+	public class ParallelismSection
+	{
+		public int MaxExtractorParallellism
+		{
+			get; set;
+		} = 8;
+
+		public int MaxDownloaderParallellism
+		{
+			get; set;
+		} = 4;
+
+		public int MaxPostprocessorParallellism
+		{
+			get; set;
+		} = 16;
+
+		public int MaxFFmpegParallellism
+		{
+			get; set;
+		} = 4;
+
+		public int MaxUnarchiverParallellism
+		{
+			get; set;
+		} = 4;
+
+		public int MaxArchiverParallellism
+		{
+			get; set;
+		} = 1;
+	}
+
+	public class MemberListExtractorSection
+	{
+		public string Executable
+		{
+			get; set;
+		} = "PixivUtil2.exe";
+
+		public string PythonScript
+		{
+			get; set;
+		} = "PixivUtil2.py";
+
+		public string Parameters
+		{
+			get; set;
+		} = "-s q ${memberDataList} ${memberIDs} -x -l \"${logPath}\\dumpMembers.log\"";
+
+		public bool ShowWindow
+		{
+			get; set;
+		} = false;
+	}
+
+	public class ExtractorSection
+	{
+		public string Executable
+		{
+			get; set;
+		} = "PixivUtil2.exe";
+
+		public string PythonScript
+		{
+			get; set;
+		} = "PixivUtil2.py";
+
+		public string Parameters
+		{
+			get; set;
+		} = "-s 1 ${memberID} --sp=${page} --ep=${page} -x --pipe=${ipcAddress} --db=\"${databasePath}\\${memberID}.p${fileIndex}.db\" -l \"${logPath}\\Extractor.${memberID}.p${fileIndex}.log\" --aria2=\"${aria2InputPath}\\${memberID}.p${fileIndex}.txt\"";
+
+		public int FlushDelay
+		{
+			get; set;
+		} = 1000;
+
+		public int FlushPeriod
+		{
+			get; set;
+		} = 10000;
+
+		public bool ShowWindow
+		{
+			get; set;
+		} = false;
+	}
+
+	public class DownloaderSection
+	{
+		public string Executable
+		{
+			get; set;
+		} = "aria2c.exe";
+
+		public string Parameters
+		{
+			get; set;
+		} = "-i\"${aria2InputPath}\\${memberID}.p${fileIndex}.txt\" -l\"${logPath}\\aria2.${memberID}.p${fileIndex}.log\" -j16 -x2 -m0 -Rtrue --allow-overwrite=true --auto-file-renaming=false --auto-save-interval=15 --conditional-get=true --retry-wait=10 --no-file-allocation-limit=2M";
+
+		public bool ShowWindow
+		{
+			get; set;
+		} = false;
+	}
+
+	public class PostprocessorSection
+	{
+		public string Executable
+		{
+			get; set;
+		} = "PixivUtil2.exe";
+
+		public string PythonScript
+		{
+			get; set;
+		} = "PixivUtil2.py";
+
+		public string Parameters
+		{
+			get; set;
+		} = "-s 1 ${memberID} --sp=${page} --ep=${page} -x --pipe=${ipcAddress} --db=\"${databasePath}\\${memberID}.p${fileIndex}.db\" -l \"${logPath}\\Postprocessor.${memberID}.p${fileIndex}.log\"";
+
+		public bool ShowWindow
+		{
+			get; set;
+		} = false;
+	}
+
+	public class UnarchiverSection
+	{
+		public string Executable
+		{
+			get; set;
+		} = "7z.exe";
+
+		public string Parameters
+		{
+			get; set;
+		} = "x -bsp2 -o${destination}\\${archiveName} ${archive}";
+
+		public bool AllAtOnce
+		{
+			get; set;
+		} = false;
+	}
+
+	public class ArchiverSection
+	{
+		public string Executable
+		{
+			get; set;
+		} = "Hybrid7z.exe";
+
+		public string Parameters
+		{
+			get; set;
+		} = "-nopause ${archives}";
+
+		public bool AllAtOnce
+		{
+			get; set;
+		} = true;
+	}
+
+	public class ArchiveSection
+	{
+		public string ArchiveFolder
+		{
+			get; set;
+		} = "";
+
+		public string BackupFolder
+		{
+			get; set;
+		} = "";
+
+		public string WorkingFolder
+		{
+			get; set;
+		} = "";
+
+		public string ArchiveFormatWildcard
+		{
+			get; set;
+		} = "*.7z";
+
+		public string ArchiveFormatRegex
+		{
+			get; set;
+		} = "\\d+\\.7z";
+
+		public string DirectoryFormatWildcard
+		{
+			get; set;
+		} = "*";
+
+		public string DirectoryFormatRegex
+		{
+			get; set;
+		} = "^\\d+$";
+
+		public bool SearchTopDirectoryOnly
+		{
+			get; set;
+		} = false;
+	}
+
+	public class FFmpegSection
+	{
+		public string Executable
+		{
+			get; set;
+		} = "FFmpeg.exe";
+	}
+
+	public class MagicSection
+	{
+		public int MaxImagesPerPage
+		{
+			get; set;
+		} = 48;
+
+		public int IPCCommunicatePort
+		{
+			get; set;
+		} = 6974;
+
+		public int IPCTaskPort
+		{
+			get; set;
+		} = 7469;
 	}
 }

@@ -16,7 +16,7 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			Parameter = parameter;
 			Details = (archive ? "Archiving " : "Unarchiving ") + parameter.ArchiveFile;
-			ShowWindow = archive ? App.Configuration.ArchiverAllInOne : App.Configuration.UnarchiverAllInOne;
+			ShowWindow = archive ? App.Configuration.Archiver.AllAtOnce : App.Configuration.Unarchiver.AllAtOnce;
 		}
 
 		protected override bool Run()
@@ -25,7 +25,7 @@ namespace ParallelPixivUtil2.Tasks
 			{
 				var archiver = new Process();
 				archiver.StartInfo.FileName = Parameter.FileName;
-				archiver.StartInfo.WorkingDirectory = App.Configuration.ArchiveWorkingDirectory;
+				archiver.StartInfo.WorkingDirectory = App.Configuration.Archive.WorkingFolder;
 				archiver.StartInfo.Arguments = Parameter.Parameter;
 				archiver.StartInfo.UseShellExecute = false;
 
@@ -69,11 +69,14 @@ namespace ParallelPixivUtil2.Tasks
 				return;
 
 			int percIndex = line.IndexOf('%');
-			if (percIndex < 2)
+			if (percIndex < 1)
 				return;
+			int offset = 1;
+			if (percIndex >= 2)
+				offset = 2;
 
 			// '  93% 41'
-			if (int.TryParse(line.AsSpan(percIndex - 2, 2), out int prog))
+			if (int.TryParse(line.AsSpan(percIndex - offset, offset), out int prog))
 				CurrentProgress = prog;
 		}
 	}

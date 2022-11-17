@@ -30,12 +30,14 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
+				bool show = App.Configuration.Extractor.ShowWindow;
+
 				var retriever = new Process();
 				retriever.StartInfo.FileName = Parameter.FileName;
 				retriever.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
 				retriever.StartInfo.Arguments = Parameter.Parameter;
-				retriever.StartInfo.UseShellExecute = false;
-				retriever.StartInfo.CreateNoWindow = true;
+				retriever.StartInfo.UseShellExecute = show;
+				retriever.StartInfo.CreateNoWindow = !show;
 				retriever.Start();
 				retriever.WaitForExit();
 				ExitCode = retriever.ExitCode;

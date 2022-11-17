@@ -1,12 +1,19 @@
 ﻿using log4net;
 using System.IO;
 using System.Windows;
+using System.Text.Json;
+using System.Linq;
 
 namespace ParallelPixivUtil2
 {
 	public partial class App : Application
 	{
 		public static readonly ILog MainLogger = LogManager.GetLogger(nameof(App));
+
+		public readonly static JsonSerializerOptions JsonOptions = new()
+		{
+			WriteIndented = true
+		};
 
 		public static Config Configuration
 		{
@@ -35,10 +42,33 @@ namespace ParallelPixivUtil2
 
 		public App()
 		{
+			var cmdline = Environment.GetCommandLineArgs();
+
+
+			string? configName = cmdline.Where(line => line.StartsWith("-c")).Select(line => line[2..]).FirstOrDefault();
+			if (configName == null)
+				configName = "parallel.json";
+
+			OnlyPostprocessing = cmdline.Any(s => s.Equals("-pp", StringComparison.OrdinalIgnoreCase));
+			NoExit = cmdline.Any(s => s.Equals("-noexit", StringComparison.OrdinalIgnoreCase));
+
+			if (cmdline.Any(line => line.Equals("-gc", StringComparison.OrdinalIgnoreCase)))
+			{
+				File.WriteAllText(configName, JsonSerializer.Serialize(new Config(), JsonOptions));
+				MessageBox.Show($"Default configuration wrote to '{configName}'.", "Configuration generation", MessageBoxButton.OK, MessageBoxImage.Exclamation);
+				Environment.Exit(0);
+			}
+
+			if (!new FileInfo(configName).Exists)
+			{
+				MessageBox.Show($"Configuration file '{configName}' not found. Use '-gc' switch to generate the default configuration file.", "Configuration load error", MessageBoxButton.OK, MessageBoxImage.Error);
+				Environment.Exit(1);
+			}
+
 			// Initialize Configuration
 			try
 			{
-				Configuration = new Config();
+				Configuration = JsonSerializer.Deserialize<Config>(File.ReadAllText(configName))!;
 			}
 			catch (Exception e)
 			{
@@ -46,8 +76,8 @@ namespace ParallelPixivUtil2
 				Environment.Exit(1);
 			}
 
-			string extractorExecutable = Configuration.ExtractorExecutable;
-			string extractorScript = Configuration.ExtractorScript;
+			string extractorExecutable = Configuration.Extractor.Executable;
+			string extractorScript = Configuration.Extractor.PythonScript;
 			IsExtractorScript = File.Exists(extractorScript);
 			if (!IsExtractorScript && RequireExists(extractorExecutable, "Extractor executable", silent: true))
 			{
@@ -67,34 +97,27 @@ namespace ParallelPixivUtil2
 				ExtractorWorkingDirectory = extractorWorkingDirectory!;
 			}
 
-			string listFile = Configuration.ListFile;
-			string downloaderExecutable = Configuration.DownloaderExecutable;
+			string listFile = Configuration.ListFileName;
+			string downloaderExecutable = Configuration.Downloader.Executable;
 			if (RequireExists(listFile, "List file") || RequireExists(downloaderExecutable, "Downloader executable") || RequireExists($"{extractorWorkingDirectory}\\config.ini", "Extractor configuration", "\nIf this is the first run, make sure to run PixivUtil2 once to generate the default configuration file."))
 				Environment.Exit(1);
 
-			CreateDirectoryIfNotExists(Configuration.LogPath);
-			CreateDirectoryIfNotExists(Configuration.Aria2InputPath);
-			CreateDirectoryIfNotExists(Configuration.DatabasePath);
+			CreateDirectoryIfNotExists(Configuration.LogFolderName);
+			CreateDirectoryIfNotExists(Configuration.DownloadListFolderName);
+			CreateDirectoryIfNotExists(Configuration.DatabaseFolderName);
 			if (Configuration.AutoArchive)
 			{
-				CreateDirectoryIfNotExists(Configuration.Archive);
-				CreateDirectoryIfNotExists(Configuration.ArchiveBackup);
-				CreateDirectoryIfNotExists(Configuration.ArchiveWorkingDirectory);
+				CreateDirectoryIfNotExists(Configuration.Archive.ArchiveFolder);
+				CreateDirectoryIfNotExists(Configuration.Archive.BackupFolder);
+				CreateDirectoryIfNotExists(Configuration.Archive.WorkingFolder);
 			}
 
 
-			int workerCount = Math.Max(Configuration.MaxExtractorParallellism, Math.Max(Configuration.MaxDownloaderParallellism, Configuration.MaxPostprocessorParallellism)) + Configuration.MaxFFmpegParallellism + 4; // 4 for fallback
+			int workerCount = Math.Max(Configuration.Parallelism.MaxExtractorParallellism, Math.Max(Configuration.Parallelism.MaxDownloaderParallellism, Configuration.Parallelism.MaxPostprocessorParallellism)) + Configuration.Parallelism.MaxFFmpegParallellism + 4; // 4 for fallback
 			if (!ThreadPool.SetMinThreads(workerCount, workerCount))
 				MainLogger.Warn("Failed to set min thread pool workers.");
 			if (!ThreadPool.SetMaxThreads(workerCount, workerCount))
 				MainLogger.Warn("Failed to set max thread pool workers.");
-		}
-
-		protected override void OnStartup(StartupEventArgs e)
-		{
-			string[] args = e.Args;
-			OnlyPostprocessing = args.Any(s => s.Equals("onlypp", StringComparison.OrdinalIgnoreCase));
-			NoExit = args.Any(s => s.Equals("noexit", StringComparison.OrdinalIgnoreCase));
 		}
 
 		private static bool RequireExists(string fileName, string fileDetails, string? extraComments = null, bool silent = false)

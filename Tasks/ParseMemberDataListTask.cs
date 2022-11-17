@@ -29,7 +29,7 @@ namespace ParallelPixivUtil2.Tasks
 
 		protected override bool Run()
 		{
-			int maxImagesPerPage = App.Configuration.MaxImagesPerPage;
+			int maxImagesPerPage = App.Configuration.Magics.MaxImagesPerPage;
 			var memberPageList = new Dictionary<long, ICollection<MemberPage>>();
 			foreach (string line in File.ReadAllLines(MemberDataList))
 			{

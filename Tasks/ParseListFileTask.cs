@@ -21,7 +21,7 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
-				Lines = File.ReadAllLines(App.Configuration.ListFile);
+				Lines = File.ReadAllLines(App.Configuration.ListFileName);
 			}
 			catch (Exception e)
 			{

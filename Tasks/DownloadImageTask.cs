@@ -18,12 +18,14 @@ namespace ParallelPixivUtil2.Tasks
 			{
 				Details = "Retrieveing member data list";
 
+				bool show = App.Configuration.Downloader.ShowWindow;
+
 				var retriever = new Process();
 				retriever.StartInfo.FileName = Parameter.FileName;
 				retriever.StartInfo.WorkingDirectory = Parameter.WorkingDirectory;
 				retriever.StartInfo.Arguments = Parameter.Parameter;
-				retriever.StartInfo.UseShellExecute = false;
-				retriever.StartInfo.CreateNoWindow = true;
+				retriever.StartInfo.UseShellExecute = show;
+				retriever.StartInfo.CreateNoWindow = !show;
 				retriever.Start();
 				retriever.WaitForExit();
 				ExitCode = retriever.ExitCode;

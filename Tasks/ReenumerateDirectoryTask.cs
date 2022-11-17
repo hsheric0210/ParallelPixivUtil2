@@ -21,9 +21,9 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
-				Regex? pattern = string.IsNullOrWhiteSpace(App.Configuration.DirectoryFormatRegex) ? null : new Regex(App.Configuration.DirectoryFormatRegex);
+				Regex? pattern = string.IsNullOrWhiteSpace(App.Configuration.Archive.DirectoryFormatRegex) ? null : new Regex(App.Configuration.Archive.DirectoryFormatRegex);
 				var directoryList = new HashSet<string>();
-				foreach (string directory in Directory.EnumerateDirectories(App.Configuration.ArchiveWorkingDirectory, App.Configuration.DirectoryFormatWildcard, SearchOption.TopDirectoryOnly))
+				foreach (string directory in Directory.EnumerateDirectories(App.Configuration.Archive.WorkingFolder, App.Configuration.Archive.DirectoryFormatWildcard, SearchOption.TopDirectoryOnly))
 				{
 					if (pattern?.IsMatch(Path.GetFileName(directory)) != false)
 						directoryList.Add(directory);
