@@ -34,7 +34,7 @@ namespace ParallelPixivUtil2.Tasks
 				ffmpeg.StartInfo.UseShellExecute = false;
 				ffmpeg.StartInfo.CreateNoWindow = true;
 				foreach (string param in Parameters)
-					ffmpeg.StartInfo.ArgumentList.Add(param);
+					ffmpeg.StartInfo.ArgumentList.Add(param.Trim('\"')); // The last failsafe: FFmpeg emits error if received parameter covered with commas
 				ffmpeg.Start();
 				ffmpeg.WaitForExit();
 				exitCode = ffmpeg.ExitCode;

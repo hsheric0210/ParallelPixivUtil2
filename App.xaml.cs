@@ -56,6 +56,12 @@ namespace ParallelPixivUtil2
 				Configuration.LogFolderName = Path.GetFullPath(Configuration.LogFolderName);
 				Configuration.DownloadListFolderName = Path.GetFullPath(Configuration.DownloadListFolderName);
 				Configuration.DatabaseFolderName = Path.GetFullPath(Configuration.DatabaseFolderName);
+				if (Configuration.AutoArchive)
+				{
+					Configuration.Archive.WorkingFolder = Path.GetFullPath(Configuration.Archive.WorkingFolder);
+					Configuration.Archive.BackupFolder = Path.GetFullPath(Configuration.Archive.BackupFolder);
+					Configuration.Archive.ArchiveFolder = Path.GetFullPath(Configuration.Archive.ArchiveFolder);
+				}
 			}
 			catch (Exception e)
 			{

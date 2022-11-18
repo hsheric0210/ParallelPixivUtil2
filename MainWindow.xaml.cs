@@ -214,29 +214,37 @@ namespace ParallelPixivUtil2
 								if (StartTask(task))
 								{
 									string[] detFiles = task.DetectedDirectoryList.ToArray();
-									void RunArchiverIndividual(string file, ArchiverParameter param)
+									bool RunArchiverIndividual(string file, ArchiverParameter param)
 									{
-										StartTask(new ArchiverTask(param with
+										return StartTask(new ArchiverTask(param with
 										{
 											ArchiveFile = file,
 										}, true));
 									}
 
 									ViewModel.ProgressDetails = "Re-archiving archive directories";
+									bool successful = true;
 									if (App.Configuration.Archiver.AllAtOnce)
 									{
-										RunArchiverIndividual("", archiverParams with
+										successful = RunArchiverIndividual("", archiverParams with
 										{
 											ArchiveFiles = detFiles
-										});
+										}) && successful;
 									}
 									else
 									{
-										RunForEachLine(detFiles, App.Configuration.Parallelism.MaxArchiverParallellism, archiverParams, RunArchiverIndividual);
+										RunForEachLine(detFiles, App.Configuration.Parallelism.MaxArchiverParallellism, archiverParams, (f, p) => successful = RunArchiverIndividual(f, p) && successful);
 									}
 
 									ViewModel.ProgressDetails = "Copy updated archives to the repository";
-									StartTask(new CopyArchiveToReporitoryTask(detFiles));
+									successful = StartTask(new CopyArchiveToReporitoryTask(detFiles)) && successful;
+
+									if (successful && App.Configuration.Archive.DeleteWorkingAfterExecution)
+									{
+										// If anything is ok
+										ViewModel.ProgressDetails = "Deleting working folder as anything is alright";
+										StartTask(new DeleteWorkingFolderTask());
+									}
 								}
 							}
 						}

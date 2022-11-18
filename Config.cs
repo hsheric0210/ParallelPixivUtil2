@@ -292,6 +292,11 @@ namespace ParallelPixivUtil2
 		{
 			get; set;
 		} = false;
+
+		public bool DeleteWorkingAfterExecution
+		{
+			get; set;
+		} = false;
 	}
 
 	public class FFmpegSection

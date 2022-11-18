@@ -30,15 +30,8 @@
 			{
 				if (ParameterFormat == null)
 					throw new InvalidOperationException(nameof(ParameterFormat) + " is not set");
-				return ExtraParameters + FormatTokens(ParameterFormat, ParameterTokens);
+				return ExtraParameters + TokenFormatter.FormatWithTokens(ParameterFormat, ParameterTokens);
 			}
-		}
-
-		private static string FormatTokens(string format, IDictionary<string, string> tokens)
-		{
-			foreach (KeyValuePair<string, string> token in tokens)
-				format = format.Replace($"${{{token.Key}}}", token.Value);
-			return format;
 		}
 	}
 }
