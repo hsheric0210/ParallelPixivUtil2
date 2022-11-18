@@ -291,7 +291,7 @@ namespace ParallelPixivUtil2
 		public bool SearchTopDirectoryOnly
 		{
 			get; set;
-		} = false;
+		} = true;
 
 		public bool DeleteWorkingAfterExecution
 		{

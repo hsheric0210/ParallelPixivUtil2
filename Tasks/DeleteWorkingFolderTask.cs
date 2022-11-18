@@ -21,10 +21,12 @@ namespace ParallelPixivUtil2.Tasks
 
 				string wfolder = App.Configuration.Archive.WorkingFolder;
 				Details = $"Deleting working folder '{wfolder}'.";
+				Logger.InfoFormat("Deleting '{0}'.", wfolder);
 				Directory.Delete(wfolder, true);
 
 				string bfolder = App.Configuration.Archive.BackupFolder;
-				Details = $"Deleting backup folder '{wfolder}'.";
+				Logger.InfoFormat("Deleting '{0}'.", bfolder);
+				Details = $"Deleting backup folder '{bfolder}'.";
 				Directory.Delete(bfolder, true);
 			}
 			catch (Exception e)
