@@ -130,9 +130,9 @@
 
 		public string BatchFileName { get; set; } = "securelookup_batch.txt"; // set empty string to disable
 
-		public string ArchiveCommand { get; set; } = "Add -Name={UserID} -Path=\"{Source}\" -Repository=\"{ArchiveFolder}\" -Tags=\"Username={UserName};UserID={UserID}\" -Urls=\"{UserUrl}\" -ReusePreviousName -Append=\"{WorkingFolder}\\ArchiverQueue\"";
+		public string ArchiveCommand { get; set; } = "Add -Name={UserID} -Path=\"{Source}\" -Repo=\"{ArchiveFolder}\" -Tags=\"Username={UserName};UserID={UserID}\" -Urls=\"{UserUrl}\" -ReusePreviousName -Append=\"{WorkingFolder}\\ArchiverQueue\"";
 
-		public string UnarchiveCommand { get; set; } = "Extract -t=n -m=e -kw=\"{UserIDs}\" -Repository=\"{ArchiveFolder}\" -Destination=\"{WorkingFolder}\" -Parallelism=4 -y";
+		public string UnarchiveCommand { get; set; } = "Extract -t=n -m=e -kw=\"{UserIDs}\" -Repo=\"{ArchiveFolder}\" -Destination=\"{WorkingFolder}\" -Parallelism=4 -y";
 
 		public bool ShowWindow { get; set; } = false;
 	}
