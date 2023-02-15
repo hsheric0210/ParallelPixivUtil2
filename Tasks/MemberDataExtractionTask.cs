@@ -1,5 +1,5 @@
-﻿using log4net;
-using ParallelPixivUtil2.Parameters;
+﻿using ParallelPixivUtil2.Parameters;
+using Serilog;
 using System.Diagnostics;
 
 // TODO: Add progress notification support to ExtractMemberPhase
@@ -8,8 +8,6 @@ namespace ParallelPixivUtil2.Tasks
 {
 	public class MemberDataExtractionTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(MemberDataExtractionTask));
-
 		private readonly PixivUtil2Parameter Parameter;
 
 		public MemberDataExtractionTask(PixivUtil2Parameter parameter) : base("Retrieve member data") => Parameter = parameter;
@@ -18,7 +16,7 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
-				bool show = App.Configuration.MemberListExtractor.ShowWindow;
+				var show = App.Configuration.MemberListExtractor.ShowWindow;
 
 				var retriever = new Process();
 				retriever.StartInfo.FileName = Parameter.FileName;
@@ -32,7 +30,7 @@ namespace ParallelPixivUtil2.Tasks
 			}
 			catch (Exception ex)
 			{
-				Logger.Error("Error occurred while retrieveing member data list", ex);
+				Log.Error(ex, "Error occurred while retrieveing member data list");
 				Details = $"Error: '{ex.Message}' (see log for details)";
 				return true;
 			}

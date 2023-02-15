@@ -9,7 +9,7 @@ namespace ParallelPixivUtil2
 			if (!File.Exists(fileName))
 				return fileName;
 
-			int i = 1;
+			var i = 1;
 			while (File.Exists($"{fileName}.{i}.bak"))
 				i++;
 

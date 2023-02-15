@@ -1,7 +1,7 @@
-﻿using log4net;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Text;
+using Serilog;
 
 // TODO: Add progress notification support to ExtractMemberPhase
 
@@ -9,8 +9,6 @@ namespace ParallelPixivUtil2.Tasks
 {
 	public class DownloadQueueFlushTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(DownloadQueueFlushTask));
-
 		private readonly IDictionary<string, IList<string>> DownloadQueue;
 		public IDictionary<string, IList<string>> RetryQueue = new Dictionary<string, IList<string>>();
 
@@ -20,7 +18,7 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
-				Logger.Debug("Processing queued download input list...");
+				Log.Debug("Processing queued download input list...");
 				var watch = new Stopwatch();
 				watch.Start();
 
@@ -28,25 +26,25 @@ namespace ParallelPixivUtil2.Tasks
 					Task.Run(() =>
 					{
 						var builder = new StringBuilder();
-						foreach (string? item in pair.Value)
+						foreach (var item in pair.Value)
 							builder.Append(item);
 						try
 						{
 							File.AppendAllText(pair.Key, builder.ToString());
 						}
-						catch (Exception e)
+						catch (Exception ex)
 						{
-							Logger.Warn("Exception occurred while writing. Added to retry queue.", e);
+							Log.Warning(ex, "Exception occurred while writing. Added to retry queue.");
 							RetryQueue.Add(pair);
 						}
 					}))).Wait();
 
 				watch.Stop();
-				Logger.DebugFormat("Processed queued download input list: Took {0}ms", watch.ElapsedMilliseconds);
+				Log.Debug("Processed queued download input list: Took {0}ms", watch.ElapsedMilliseconds);
 			}
 			catch (Exception e)
 			{
-				Logger.Error("An error occurred.", e);
+				Log.Error(e, "An error occurred.");
 				return true;
 			}
 

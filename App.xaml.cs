@@ -1,15 +1,12 @@
-﻿using log4net;
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Text.Json;
-using System.Linq;
+using Serilog;
 
 namespace ParallelPixivUtil2
 {
 	public partial class App : Application
 	{
-		public static readonly ILog MainLogger = LogManager.GetLogger(nameof(App));
-
 		public readonly static JsonSerializerOptions JsonOptions = new()
 		{
 			WriteIndented = true
@@ -47,6 +44,24 @@ namespace ParallelPixivUtil2
 
 		public static void ConfigInit()
 		{
+			try
+			{
+				Log.Logger = new LoggerConfiguration()
+					.MinimumLevel.Verbose()
+					.WriteTo.File(
+						nameof(ParallelPixivUtil2) + ".log",
+						fileSizeLimitBytes: 4194304,
+						buffered: true,
+						flushToDiskInterval: TimeSpan.FromSeconds(1),
+						rollOnFileSizeLimit: true)
+					.CreateLogger();
+			}
+			catch (Exception e)
+			{
+				MessageBox.Show("Can't create logger.\nFollowing exception occurred:\n" + e.ToString(), "Configuration load error", MessageBoxButton.OK, MessageBoxImage.Error);
+				Environment.Exit(1);
+			}
+
 			// Initialize Configuration
 			try
 			{
@@ -74,8 +89,7 @@ namespace ParallelPixivUtil2
 		{
 			var cmdline = Environment.GetCommandLineArgs();
 
-
-			string? configName = cmdline.Where(line => line.StartsWith("-c")).Select(line => line[2..]).FirstOrDefault();
+			var configName = cmdline.Where(line => line.StartsWith("-c")).Select(line => line[2..]).FirstOrDefault();
 			if (configName == null)
 				configName = "parallel.json";
 			ConfigName = configName;
@@ -98,8 +112,8 @@ namespace ParallelPixivUtil2
 
 			ConfigInit();
 
-			string extractorExecutable = Configuration.Extractor.Executable;
-			string extractorScript = Configuration.Extractor.PythonScript;
+			var extractorExecutable = Configuration.Extractor.Executable;
+			var extractorScript = Configuration.Extractor.PythonScript;
 			IsExtractorScript = File.Exists(extractorScript);
 			if (!IsExtractorScript && RequireExists(extractorExecutable, "Extractor executable", silent: true))
 			{
@@ -107,8 +121,8 @@ namespace ParallelPixivUtil2
 				Environment.Exit(1);
 			}
 
-			string extractorPath = IsExtractorScript ? extractorScript : extractorExecutable;
-			string? extractorWorkingDirectory = Path.GetDirectoryName(extractorPath);
+			var extractorPath = IsExtractorScript ? extractorScript : extractorExecutable;
+			var extractorWorkingDirectory = Path.GetDirectoryName(extractorPath);
 			if (string.IsNullOrWhiteSpace(extractorWorkingDirectory))
 			{
 				MessageBox.Show($"Extractor directory unavailable ({extractorPath}).", "Extractor directory unavailable", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -119,8 +133,8 @@ namespace ParallelPixivUtil2
 				ExtractorWorkingDirectory = extractorWorkingDirectory!;
 			}
 
-			string listFile = Configuration.ListFileName;
-			string downloaderExecutable = Configuration.Downloader.Executable;
+			var listFile = Configuration.ListFileName;
+			var downloaderExecutable = Configuration.Downloader.Executable;
 			if (RequireExists(listFile, "List file") || RequireExists(downloaderExecutable, "Downloader executable") || RequireExists($"{extractorWorkingDirectory}\\config.ini", "Extractor configuration", "\nIf this is the first run, make sure to run PixivUtil2 once to generate the default configuration file."))
 				Environment.Exit(1);
 
@@ -134,12 +148,11 @@ namespace ParallelPixivUtil2
 				CreateDirectoryIfNotExists(Configuration.Archive.WorkingFolder);
 			}
 
-
-			int workerCount = Math.Max(Configuration.Parallelism.MaxExtractorParallellism, Math.Max(Configuration.Parallelism.MaxDownloaderParallellism, Configuration.Parallelism.MaxPostprocessorParallellism)) + Configuration.Parallelism.MaxFFmpegParallellism + 4; // 4 for fallback
+			var workerCount = Math.Max(Configuration.Parallelism.MaxExtractorParallellism, Math.Max(Configuration.Parallelism.MaxDownloaderParallellism, Configuration.Parallelism.MaxPostprocessorParallellism)) + Configuration.Parallelism.MaxFFmpegParallellism + 4; // 4 for fallback
 			if (!ThreadPool.SetMinThreads(workerCount, workerCount))
-				MainLogger.Warn("Failed to set min thread pool workers.");
+				Log.Warning("Failed to set min thread pool workers.");
 			if (!ThreadPool.SetMaxThreads(workerCount, workerCount))
-				MainLogger.Warn("Failed to set max thread pool workers.");
+				Log.Warning("Failed to set max thread pool workers.");
 		}
 
 		private static bool RequireExists(string fileName, string fileDetails, string? extraComments = null, bool silent = false)
@@ -148,7 +161,7 @@ namespace ParallelPixivUtil2
 			{
 				if (!silent)
 				{
-					MainLogger.ErrorFormat("{0} is not available. ({1})", fileName, fileDetails);
+					Log.Error("{name} is not available: {details}", fileName, fileDetails);
 					MessageBox.Show($"File '{fileName}' ({fileDetails}) unavailable.{extraComments ?? ""}", "Requirements unavailable", MessageBoxButton.OK, MessageBoxImage.Error);
 				}
 				return true;
@@ -160,7 +173,7 @@ namespace ParallelPixivUtil2
 		{
 			if (!Directory.Exists(dirName))
 			{
-				MainLogger.WarnFormat("Creating {0} directory as it is not exists.", dirName);
+				Log.Warning("Creating {name} directory as it does not exists.", dirName);
 				Directory.CreateDirectory(dirName);
 			}
 		}

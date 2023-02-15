@@ -1,5 +1,5 @@
-﻿using log4net;
-using System.IO;
+﻿using System.IO;
+using Serilog;
 
 // TODO: Add progress notification support to ExtractMemberPhase
 
@@ -7,7 +7,6 @@ namespace ParallelPixivUtil2.Tasks
 {
 	public class ParseListFileTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(ParseListFileTask));
 		public string[]? Lines
 		{
 			get; private set;
@@ -25,7 +24,7 @@ namespace ParallelPixivUtil2.Tasks
 			}
 			catch (Exception e)
 			{
-				Logger.Error("Exception occurred while parsing all lines from list file.", e);
+				Log.Error(e, "Exception occurred while parsing all lines from list file.");
 				return true;
 			}
 			return false;

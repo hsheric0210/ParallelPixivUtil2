@@ -1,14 +1,12 @@
-﻿using log4net;
-using NetMQ;
+﻿using NetMQ;
 using ParallelPixivUtil2.Tasks;
+using Serilog;
 using System.IO;
 
 namespace ParallelPixivUtil2.Ipc
 {
 	public static class IpcManager
 	{
-		private static readonly ILog IPCLogger = LogManager.GetLogger("IPC");
-
 		private static IpcConnection? Communication;
 		private static IpcConnection? TaskRequest;
 
@@ -19,8 +17,7 @@ namespace ParallelPixivUtil2.Ipc
 		public static event EventHandler<IpcTotalNotifyEventArgs>? OnIpcTotalNotify;
 		public static event EventHandler<IpcEventArgs>? OnIpcProcessNotify;
 
-		private static SemaphoreSlim FFmpegSemaphore = null!
-			;
+		private static SemaphoreSlim FFmpegSemaphore = null!;
 
 		public static void InitFFmpegSemaphore(int maxParallellism) => FFmpegSemaphore = new SemaphoreSlim(maxParallellism);
 
@@ -28,8 +25,8 @@ namespace ParallelPixivUtil2.Ipc
 		{
 			Communication = IpcExtension.InitializeIPCSocket(address, (socket, uidFrame, group, message) =>
 			{
-				string uidString = uidFrame.ToUniqueIDString();
-				if (IPCIdentifiers.TryGetValue(uidString, out string? identifier))
+				var uidString = uidFrame.ToUniqueIDString();
+				if (IPCIdentifiers.TryGetValue(uidString, out var identifier))
 					uidString += $" ({identifier})";
 				else
 					identifier = "Unregistered";
@@ -37,9 +34,9 @@ namespace ParallelPixivUtil2.Ipc
 				{
 					case IpcConstants.HANDSHAKE:
 					{
-						string newIdentifier = message[0].ConvertToStringUTF8();
-						IPCLogger.DebugFormat("{0} | IPC Handshake received : '{1}'", uidString, newIdentifier);
-						string pipeType = message[1].ConvertToStringUTF8();
+						var newIdentifier = message[0].ConvertToStringUTF8();
+						Log.Debug("{0} | IPC Handshake received : '{1}'", uidString, newIdentifier);
+						var pipeType = message[1].ConvertToStringUTF8();
 						if (pipeType.Equals("Comm", StringComparison.OrdinalIgnoreCase))
 						{
 							IPCIdentifiers[uidString] = newIdentifier;
@@ -48,7 +45,7 @@ namespace ParallelPixivUtil2.Ipc
 						}
 						else
 						{
-							IPCLogger.FatalFormat("Unexpected handshake '{0}' from {1} - Comm expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType, uidString);
+							Log.Fatal("Unexpected handshake '{0}' from {1} - Comm expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType, uidString);
 							socket.Send(uidFrame, group, IpcConstants.RETURN_ERROR);
 						}
 
@@ -57,8 +54,8 @@ namespace ParallelPixivUtil2.Ipc
 
 					case IpcConstants.NOTIFY_TOTAL:
 					{
-						int total = message[0].ConvertToInt32();
-						IPCLogger.DebugFormat("{0} | IPC sent total job count : {1}", uidString, total);
+						var total = message[0].ConvertToInt32();
+						Log.Debug("{0} | IPC sent total job count : {1}", uidString, total);
 						OnIpcTotalNotify?.Invoke(null, new IpcTotalNotifyEventArgs(IpcType.Communication, identifier, total));
 						socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 						break;
@@ -67,7 +64,7 @@ namespace ParallelPixivUtil2.Ipc
 					case IpcConstants.NOTIFY_DOWNLOADED:
 					{
 						var status = (PixivDownloadResult)message[1].ConvertToInt32();
-						IPCLogger.DebugFormat("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), status);
+						Log.Debug("{0} | Image {1} process result : {2}", uidString, message[0].ConvertToInt64(), status);
 						OnIpcProcessNotify?.Invoke(null, new IpcEventArgs(IpcType.Communication, identifier));
 						socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 						break;
@@ -75,7 +72,7 @@ namespace ParallelPixivUtil2.Ipc
 
 					case IpcConstants.NOTIFY_TITLE:
 					{
-						IPCLogger.DebugFormat("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
+						Log.Debug("{0} | Title updated: {1}", uidString, message[0].ConvertToStringUTF8());
 						socket.Send(uidFrame, group, IpcConstants.RETURN_OK);
 						break;
 					}
@@ -87,8 +84,8 @@ namespace ParallelPixivUtil2.Ipc
 		{
 			TaskRequest = IpcExtension.InitializeIPCSocket(address, (socket, uidFrame, group, message) =>
 			{
-				string uidString = uidFrame.ToUniqueIDString();
-				if (IPCIdentifiers.TryGetValue(uidString, out string? identifier))
+				var uidString = uidFrame.ToUniqueIDString();
+				if (IPCIdentifiers.TryGetValue(uidString, out var identifier))
 					uidString += $" ({identifier})";
 				else
 					identifier = "Unregistered";
@@ -96,9 +93,9 @@ namespace ParallelPixivUtil2.Ipc
 				{
 					case IpcConstants.HANDSHAKE:
 					{
-						string newIdentifier = message[0].ConvertToStringUTF8();
-						IPCLogger.DebugFormat("{0} | IPC Handshake received : '{1}'", uidString, newIdentifier);
-						string pipeType = message[1].ConvertToStringUTF8();
+						var newIdentifier = message[0].ConvertToStringUTF8();
+						Log.Debug("{0} | IPC Handshake received : '{1}'", uidString, newIdentifier);
+						var pipeType = message[1].ConvertToStringUTF8();
 						if (pipeType.Equals("Task", StringComparison.OrdinalIgnoreCase))
 						{
 							IPCIdentifiers[uidString] = newIdentifier;
@@ -107,7 +104,7 @@ namespace ParallelPixivUtil2.Ipc
 						}
 						else
 						{
-							IPCLogger.FatalFormat("Unexpected handshake '{0}' from {1} - Task expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType, uidString);
+							Log.Fatal("Unexpected handshake '{0}' from {1} - Task expected. Did you swapped ipcCommAddress and ipcTaskAddress?", pipeType, uidString);
 							socket.Send(uidFrame, group, IpcConstants.RETURN_ERROR);
 						}
 
@@ -116,7 +113,7 @@ namespace ParallelPixivUtil2.Ipc
 
 					case IpcConstants.TASK_FFMPEG_REQUEST:
 					{
-						IPCLogger.InfoFormat("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
+						Log.Information("{0} | FFmpeg execution request received : '{1}'", uidString, string.Join(' ', message.Select(arg => arg.ConvertToStringUTF8())));
 
 						// Generate task ID
 						int taskID;
@@ -130,15 +127,15 @@ namespace ParallelPixivUtil2.Ipc
 						{
 							if (FFmpegSemaphore == null)
 							{
-								IPCLogger.Warn("FFmpeg semaphore not initialized. Bypassing parallellism limit.");
+								Log.Warning("FFmpeg semaphore not initialized. Bypassing parallellism limit.");
 							}
 							else
 							{
-								IPCLogger.DebugFormat("{0} | FFmpeg execution '{1}' is waiting for semaphore...", uidString, taskID);
+								Log.Debug("{0} | FFmpeg execution '{1}' is waiting for semaphore...", uidString, taskID);
 								await FFmpegSemaphore.WaitAsync();
 							}
 
-							IPCLogger.InfoFormat("{0} | FFmpeg execution '{1}' is in process...", uidString, taskID);
+							Log.Information("{0} | FFmpeg execution '{1}' is in process...", uidString, taskID);
 							var task = new FFmpegTask(uidString, extractorWorkingDirectory, message.Select(msg => msg.ConvertToStringUTF8()), FFmpegSemaphore);
 							MainWindow.INSTANCE.StartTask(task);
 							return task.ExitCode;
@@ -149,15 +146,15 @@ namespace ParallelPixivUtil2.Ipc
 
 					case IpcConstants.TASK_FFMPEG_RESULT:
 					{
-						int taskID = BitConverter.ToInt32(message[0].Buffer);
+						var taskID = BitConverter.ToInt32(message[0].Buffer);
 						if (FFmpegTasks.ContainsKey(taskID))
 						{
-							IPCLogger.DebugFormat("{0} | Exit code of FFmpeg execution '{1}' requested.", uidString, taskID);
+							Log.Debug("{0} | Exit code of FFmpeg execution '{1}' requested.", uidString, taskID);
 							Task.Run(async () => socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(await FFmpegTasks[taskID]))));
 						}
 						else
 						{
-							IPCLogger.WarnFormat("{0} | Exit code of non-existent FFmpeg execution '{1}' requested.", uidString, taskID);
+							Log.Warning("{0} | Exit code of non-existent FFmpeg execution '{1}' requested.", uidString, taskID);
 							socket.Send(uidFrame, group, new NetMQFrame(BitConverter.GetBytes(-1)));
 						}
 						break;

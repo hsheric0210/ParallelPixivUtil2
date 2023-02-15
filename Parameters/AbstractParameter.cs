@@ -1,4 +1,7 @@
-﻿namespace ParallelPixivUtil2.Parameters
+﻿using Serilog;
+using StringTokenFormatter;
+
+namespace ParallelPixivUtil2.Parameters
 {
 	public abstract record AbstractParameter
 	{
@@ -30,7 +33,9 @@
 			{
 				if (ParameterFormat == null)
 					throw new InvalidOperationException(nameof(ParameterFormat) + " is not set");
-				return ExtraParameters + TokenFormatter.FormatWithTokens(ParameterFormat, ParameterTokens);
+				string tmp = ExtraParameters + ParameterFormat.FormatDictionary(ParameterTokens);
+				Log.Warning(tmp);
+				return tmp;
 			}
 		}
 	}

@@ -1,13 +1,11 @@
-﻿using log4net;
-using ParallelPixivUtil2.Tasks;
+﻿using ParallelPixivUtil2.Tasks;
+using Serilog;
 using System.Collections.Concurrent;
 
 namespace ParallelPixivUtil2.Ipc
 {
 	public static class DownloadQueueManager
 	{
-		private readonly static ILog Logger = LogManager.GetLogger(nameof(DownloadQueueManager));
-
 		private static readonly IDictionary<string, IList<string>> DownloadQueue = new ConcurrentDictionary<string, IList<string>>();
 		private static Timer? Timer;
 
@@ -47,7 +45,7 @@ namespace ParallelPixivUtil2.Ipc
 			}
 			catch (Exception ex)
 			{
-				Logger.Error("Error flushing download queue.", ex);
+				Log.Error(ex, "Error flushing download queue.");
 			}
 		}
 	}

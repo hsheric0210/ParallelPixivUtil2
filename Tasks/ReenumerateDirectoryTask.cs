@@ -1,14 +1,12 @@
-﻿using log4net;
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.IO;
 using System.Text.RegularExpressions;
+using Serilog;
 
 namespace ParallelPixivUtil2.Tasks
 {
 	public class ReenumerateDirectoryTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(ReenumerateDirectoryTask));
-
 		private readonly string[] FileList;
 		public ICollection<string> DetectedDirectoryList
 		{
@@ -23,7 +21,7 @@ namespace ParallelPixivUtil2.Tasks
 			{
 				Regex? pattern = string.IsNullOrWhiteSpace(App.Configuration.Archive.DirectoryFormatRegex) ? null : new Regex(App.Configuration.Archive.DirectoryFormatRegex);
 				var directoryList = new HashSet<string>();
-				foreach (string directory in Directory.EnumerateDirectories(App.Configuration.Archive.WorkingFolder, App.Configuration.Archive.DirectoryFormatWildcard, SearchOption.TopDirectoryOnly))
+				foreach (var directory in Directory.EnumerateDirectories(App.Configuration.Archive.WorkingFolder, App.Configuration.Archive.DirectoryFormatWildcard, SearchOption.TopDirectoryOnly))
 				{
 					if (pattern?.IsMatch(Path.GetFileName(directory)) != false)
 						directoryList.Add(directory);
@@ -31,9 +29,9 @@ namespace ParallelPixivUtil2.Tasks
 
 				DetectedDirectoryList = directoryList.ToImmutableList();
 			}
-			catch (Exception e)
+			catch (Exception ex)
 			{
-				Logger.Error("Failed to copy existing archives.", e);
+				Log.Error(ex, "Failed to copy existing archives.");
 				return true;
 			}
 

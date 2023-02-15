@@ -1,14 +1,12 @@
-﻿using log4net;
-using ParallelPixivUtil2.Ipc;
+﻿using ParallelPixivUtil2.Ipc;
 using ParallelPixivUtil2.Parameters;
+using Serilog;
 using System.Diagnostics;
 
 namespace ParallelPixivUtil2.Tasks
 {
 	public class RetrieveImageTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(DownloadImageTask));
-
 		private readonly PixivUtil2Parameter Parameter;
 		private readonly string? MyIdentifier;
 
@@ -30,7 +28,7 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
-				bool show = App.Configuration.Extractor.ShowWindow;
+				var show = App.Configuration.Extractor.ShowWindow;
 
 				var retriever = new Process();
 				retriever.StartInfo.FileName = Parameter.FileName;
@@ -44,7 +42,7 @@ namespace ParallelPixivUtil2.Tasks
 			}
 			catch (Exception ex)
 			{
-				Logger.Error("Error occurred while retrieveing member image", ex);
+				Log.Error(ex, "Error occurred while retrieveing member image");
 				Details = $"Error: '{ex.Message}' (see log for details)";
 				return true;
 			}

@@ -1,14 +1,12 @@
-﻿using log4net;
-using ParallelPixivUtil2.Ipc;
+﻿using ParallelPixivUtil2.Ipc;
 using ParallelPixivUtil2.Parameters;
+using Serilog;
 using System.Diagnostics;
 
 namespace ParallelPixivUtil2.Tasks
 {
 	public class PostprocessingTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(DownloadImageTask));
-
 		private readonly PixivUtil2Parameter Parameter;
 		private readonly string? MyIdentifier;
 
@@ -30,7 +28,7 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			try
 			{
-				bool show = App.Configuration.Postprocessor.ShowWindow;
+				var show = App.Configuration.Postprocessor.ShowWindow;
 
 				var postProcessor = new Process();
 				postProcessor.StartInfo.FileName = Parameter.FileName;
@@ -44,7 +42,7 @@ namespace ParallelPixivUtil2.Tasks
 			}
 			catch (Exception ex)
 			{
-				Logger.Error("Error occurred while post-processing", ex);
+				Log.Error(ex, "Error occurred while post-processing");
 				Details = $"Error: '{ex.Message}' (see log for details)";
 				return true;
 			}

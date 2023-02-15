@@ -1,13 +1,11 @@
-﻿using log4net;
-using ParallelPixivUtil2.Parameters;
+﻿using ParallelPixivUtil2.Parameters;
+using Serilog;
 using System.Diagnostics;
 
 namespace ParallelPixivUtil2.Tasks
 {
 	public class DownloadImageTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(DownloadImageTask));
-
 		private readonly Aria2Parameter Parameter;
 
 		public DownloadImageTask(Aria2Parameter parameter) : base($"Download member image of {parameter.TargetMemberID} page {parameter.TargetPage!.Page} (File index {parameter.TargetPage!.FileIndex})") => Parameter = parameter;
@@ -18,7 +16,7 @@ namespace ParallelPixivUtil2.Tasks
 			{
 				Details = "Retrieveing member data list";
 
-				bool show = App.Configuration.Downloader.ShowWindow;
+				var show = App.Configuration.Downloader.ShowWindow;
 
 				var retriever = new Process();
 				retriever.StartInfo.FileName = Parameter.FileName;
@@ -32,7 +30,7 @@ namespace ParallelPixivUtil2.Tasks
 			}
 			catch (Exception ex)
 			{
-				Logger.Error("Error occurred while downloading member image", ex);
+				Log.Error(ex, "Error occurred while downloading member image");
 				Details = $"Error: '{ex.Message}' (see log for details)";
 				return true;
 			}

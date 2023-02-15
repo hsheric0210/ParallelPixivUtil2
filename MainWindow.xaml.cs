@@ -1,8 +1,9 @@
-﻿using log4net;
-using ParallelPixivUtil2.Ipc;
+﻿using ParallelPixivUtil2.Ipc;
 using ParallelPixivUtil2.Parameters;
 using ParallelPixivUtil2.Tasks;
+using Serilog;
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 
 namespace ParallelPixivUtil2
@@ -12,8 +13,6 @@ namespace ParallelPixivUtil2
 	/// </summary>
 	public partial class MainWindow : Window
 	{
-		public static readonly ILog MainLogger = LogManager.GetLogger(nameof(MainWindow));
-
 		private BackgroundWorker InitWorker = null!;
 		public MainViewModel ViewModel
 		{
@@ -75,11 +74,11 @@ namespace ParallelPixivUtil2
 					}
 					catch (Exception ex)
 					{
-						MainLogger.Error("Failed to setup IpcManager.", ex);
+						Log.Error(ex, "Failed to setup IpcManager.");
 						return;
 					}
 
-					string memberDataListFile = App.Configuration.MemberListFileName;
+					var memberDataListFile = App.Configuration.MemberListFileName;
 					var pixivutil2Params = new PixivUtil2Parameter(App.Configuration.Extractor.Executable, "Python.exe", App.Configuration.Extractor.PythonScript, App.IsExtractorScript, App.ExtractorWorkingDirectory, App.Configuration.LogFolderName)
 					{
 						ParameterFormat = App.Configuration.MemberListExtractor.Parameters,
@@ -88,7 +87,7 @@ namespace ParallelPixivUtil2
 						MemberDataListFile = memberDataListFile,
 						Ipc = ipcConfig
 					};
-					string[] lines = parseLines.Lines!;
+					var lines = parseLines.Lines!;
 					pixivutil2Params.ExtraParameterTokens["memberIDs"] = string.Join(' ', lines);
 
 					var aria2Params = new Aria2Parameter(App.Configuration.Downloader.Executable, App.ExtractorWorkingDirectory /* TODO: Fix this */, App.Configuration.LogFolderName, App.Configuration.DownloadListFolderName, App.Configuration.DatabaseFolderName)
@@ -106,32 +105,49 @@ namespace ParallelPixivUtil2
 						ParameterFormat = App.Configuration.Unarchiver.Parameters
 					};
 
+					var slUnarchiveParams = new SecureLookupParameter(App.Configuration.SecureLookup.Executable, App.Configuration.SecureLookup.BatchFileName)
+					{
+						ParameterFormat = App.Configuration.SecureLookup.CommonParameters + " " + App.Configuration.SecureLookup.UnarchiveParameters,
+					};
+
+					var slArchiveParams = new SecureLookupParameter(App.Configuration.SecureLookup.Executable, App.Configuration.SecureLookup.BatchFileName)
+					{
+						ParameterFormat = App.Configuration.SecureLookup.CommonParameters + " " + App.Configuration.SecureLookup.ArchiveParameters,
+					};
+
 					if (App.Configuration.AutoArchive)
 					{
-						var task = new CopyExistingArchiveFromRepositoryTask(lines);
-						if (StartTask(task))
+						if (App.Configuration.SecureLookup.Enabled)
 						{
-							ViewModel.ProgressDetails = "Moving existing archives from the repository";
-							string[] movedFiles = task.MovedFileList.ToArray();
-							void RunUnarchiverIndividual(string file, ArchiverParameter param)
+							StartTask(new SecureLookupUnarchivingTask(slUnarchiveParams, new SecureLookupBatchExtractEntry(lines) { ParameterFormat = App.Configuration.SecureLookup.UnarchiveCommand }, App.Configuration.SecureLookup.ShowWindow));
+						}
+						else
+						{
+							var task = new CopyExistingArchiveFromRepositoryTask(lines);
+							if (StartTask(task))
 							{
-								StartTask(new ArchiverTask(param with
+								ViewModel.ProgressDetails = "Moving existing archives from the repository";
+								var movedFiles = task.MovedFileList.ToArray();
+								void RunUnarchiverIndividual(string file, ArchiverParameter param)
 								{
-									ArchiveFile = file,
-								}, false));
-							}
+									StartTask(new ArchiverTask(param with
+									{
+										ArchiveFile = file,
+									}, false));
+								}
 
-							ViewModel.ProgressDetails = "Unarchiving the existing archives";
-							if (App.Configuration.Unarchiver.AllAtOnce)
-							{
-								RunUnarchiverIndividual("", unarchiverParams with
+								ViewModel.ProgressDetails = "Unarchiving the existing archives";
+								if (App.Configuration.Unarchiver.AllAtOnce)
 								{
-									ArchiveFiles = movedFiles
-								});
-							}
-							else
-							{
-								RunForEachLine(movedFiles, App.Configuration.Parallelism.MaxUnarchiverParallellism, unarchiverParams, RunUnarchiverIndividual);
+									RunUnarchiverIndividual("", unarchiverParams with
+									{
+										ArchiveFiles = movedFiles
+									});
+								}
+								else
+								{
+									RunForEachLine(movedFiles, App.Configuration.Parallelism.MaxUnarchiverParallellism, unarchiverParams, RunUnarchiverIndividual);
+								}
 							}
 						}
 					}
@@ -213,31 +229,39 @@ namespace ParallelPixivUtil2
 								var task = new ReenumerateDirectoryTask(lines);
 								if (StartTask(task))
 								{
-									string[] detFiles = task.DetectedDirectoryList.ToArray();
-									bool RunArchiverIndividual(string file, ArchiverParameter param)
+									var detFiles = task.DetectedDirectoryList.ToArray();
+									var successful = true;
+									if (App.Configuration.SecureLookup.Enabled)
 									{
-										return StartTask(new ArchiverTask(param with
-										{
-											ArchiveFile = file,
-										}, true));
-									}
-
-									ViewModel.ProgressDetails = "Re-archiving archive directories";
-									bool successful = true;
-									if (App.Configuration.Archiver.AllAtOnce)
-									{
-										successful = RunArchiverIndividual("", archiverParams with
-										{
-											ArchiveFiles = detFiles
-										}) && successful;
+										successful = StartTask(new SecureLookupArchivingTask(slArchiveParams, detFiles.Select(d => new SecureLookupBatchAddCommand(Path.GetFileName(d), "@ pixiv.net", "https://pixiv.net/users/" + Path.GetFileName(d), d, App.Configuration.SecureLookup.BatchFileName) { ParameterFormat = App.Configuration.SecureLookup.ArchiveCommand }), App.Configuration.SecureLookup.ShowWindow));
 									}
 									else
 									{
-										RunForEachLine(detFiles, App.Configuration.Parallelism.MaxArchiverParallellism, archiverParams, (f, p) => successful = RunArchiverIndividual(f, p) && successful);
-									}
+										bool RunArchiverIndividual(string file, ArchiverParameter param)
+										{
+											return StartTask(new ArchiverTask(param with
+											{
+												ArchiveFile = file,
+											}, true));
+										}
 
-									ViewModel.ProgressDetails = "Copy updated archives to the repository";
-									successful = StartTask(new CopyArchiveToReporitoryTask(detFiles)) && successful;
+										ViewModel.ProgressDetails = "Re-archiving archive directories";
+
+										if (App.Configuration.Archiver.AllAtOnce)
+										{
+											successful = RunArchiverIndividual("", archiverParams with
+											{
+												ArchiveFiles = detFiles
+											}) && successful;
+										}
+										else
+										{
+											RunForEachLine(detFiles, App.Configuration.Parallelism.MaxArchiverParallellism, archiverParams, (f, p) => successful = RunArchiverIndividual(f, p) && successful);
+										}
+
+										ViewModel.ProgressDetails = "Copy updated archives to the repository";
+										successful = StartTask(new CopyArchiveToReporitoryTask(detFiles)) && successful;
+									}
 
 									if (successful && App.Configuration.Archive.DeleteWorkingAfterExecution)
 									{
@@ -251,11 +275,14 @@ namespace ParallelPixivUtil2
 					}
 				}
 			}
-			catch (Exception exc)
+			catch (Exception ex)
 			{
-				MainLogger.Fatal("Exception caught on the main thread!", exc);
+				Log.Fatal(ex, "Exception caught on the main thread!");
 			}
-
+			finally
+			{
+				Log.CloseAndFlush();
+			}
 		}
 
 		private static void RunForEachLine<T>(IEnumerable<string> list, int parallellismLimit, T parameter, Action<string, T> callback)
@@ -263,7 +290,7 @@ namespace ParallelPixivUtil2
 		{
 			using var semaphore = new SemaphoreSlim(parallellismLimit);
 			var tasks = new List<Task>();
-			foreach (string line in list)
+			foreach (var line in list)
 			{
 				semaphore.Wait();
 				tasks.Add(Task.Run(() =>
@@ -287,7 +314,7 @@ namespace ParallelPixivUtil2
 		{
 			using var semaphore = new SemaphoreSlim(parallellismLimit);
 			var tasks = new List<Task>();
-			foreach ((long memberId, ICollection<MemberPage> pages) in memberPageList)
+			foreach ((var memberId, ICollection<MemberPage> pages) in memberPageList)
 			{
 				foreach (MemberPage page in pages)
 				{

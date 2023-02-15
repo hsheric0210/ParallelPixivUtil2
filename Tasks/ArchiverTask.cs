@@ -1,14 +1,11 @@
-﻿using log4net;
-using ParallelPixivUtil2.Parameters;
+﻿using ParallelPixivUtil2.Parameters;
+using Serilog;
 using System.Diagnostics;
-using System.IO;
 
 namespace ParallelPixivUtil2.Tasks
 {
 	public class ArchiverTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(ArchiverTask));
-
 		private readonly ArchiverParameter Parameter;
 		private readonly bool ShowWindow;
 
@@ -54,7 +51,7 @@ namespace ParallelPixivUtil2.Tasks
 			}
 			catch (Exception ex)
 			{
-				Logger.Error("Error occurred during archiving", ex);
+				Log.Error(ex, "Error occurred during archiving");
 				Details = $"Error: '{ex.Message}' (see log for details)";
 				return true;
 			}
@@ -64,19 +61,19 @@ namespace ParallelPixivUtil2.Tasks
 
 		public void ReceiveProgress(object? sender, DataReceivedEventArgs args)
 		{
-			string? line = args.Data?.Trim();
+			var line = args.Data?.Trim();
 			if (line == null)
 				return;
 
-			int percIndex = line.IndexOf('%');
+			var percIndex = line.IndexOf('%');
 			if (percIndex < 1)
 				return;
-			int offset = 1;
+			var offset = 1;
 			if (percIndex >= 2)
 				offset = 2;
 
 			// '  93% 41'
-			if (int.TryParse(line.AsSpan(percIndex - offset, offset), out int prog))
+			if (int.TryParse(line.AsSpan(percIndex - offset, offset), out var prog))
 				CurrentProgress = prog;
 		}
 	}

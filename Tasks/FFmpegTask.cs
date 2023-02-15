@@ -1,5 +1,5 @@
-﻿using log4net;
-using System.Diagnostics;
+﻿using System.Diagnostics;
+using Serilog;
 
 // TODO: Add progress notification support to ExtractMemberPhase
 
@@ -7,8 +7,6 @@ namespace ParallelPixivUtil2.Tasks
 {
 	public class FFmpegTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(FFmpegTask));
-
 		private readonly string RequestedBy;
 		private readonly string ExtractorWorkingDirectory;
 		private readonly IEnumerable<string> Parameters;
@@ -25,7 +23,7 @@ namespace ParallelPixivUtil2.Tasks
 
 		protected override bool Run()
 		{
-			int exitCode = -1;
+			var exitCode = -1;
 			try
 			{
 				var ffmpeg = new Process();
@@ -33,7 +31,7 @@ namespace ParallelPixivUtil2.Tasks
 				ffmpeg.StartInfo.WorkingDirectory = ExtractorWorkingDirectory;
 				ffmpeg.StartInfo.UseShellExecute = false;
 				ffmpeg.StartInfo.CreateNoWindow = true;
-				foreach (string param in Parameters)
+				foreach (var param in Parameters)
 					ffmpeg.StartInfo.ArgumentList.Add(param.Trim('\"')); // The last failsafe: FFmpeg emits error if received parameter covered with commas
 				ffmpeg.Start();
 				ffmpeg.WaitForExit();
@@ -42,14 +40,14 @@ namespace ParallelPixivUtil2.Tasks
 			catch (Exception ex)
 			{
 				exitCode = ex.HResult;
-				Logger.Error(string.Format("{0} | FFmpeg execution failed with exception.", RequestedBy), ex);
+				Log.Error(ex, "{0} | FFmpeg execution failed with exception.", RequestedBy);
 
 				return true;
 			}
 			finally
 			{
 				FFmpegSemaphore?.Release();
-				Logger.DebugFormat("{0} | FFmpeg execution exited with code {1}.", RequestedBy, exitCode);
+				Log.Debug("{0} | FFmpeg execution exited with code {1}.", RequestedBy, exitCode);
 			}
 
 			ExitCode = exitCode;

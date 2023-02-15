@@ -37,7 +37,7 @@
 				if (MemberDataListFile != null)
 					dict["memberDataList"] = MemberDataListFile;
 
-				foreach ((string token, string value) in ExtraParameterTokens)
+				foreach ((var token, var value) in ExtraParameterTokens)
 					dict[token] = value;
 
 				return dict;

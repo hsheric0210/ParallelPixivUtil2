@@ -1,14 +1,10 @@
-﻿using log4net;
-using System.Collections.Immutable;
-using System.IO;
-using System.Text.RegularExpressions;
+﻿using System.IO;
+using Serilog;
 
 namespace ParallelPixivUtil2.Tasks
 {
 	public class DeleteWorkingFolderTask : AbstractTask
 	{
-		private static readonly ILog Logger = LogManager.GetLogger(nameof(DeleteWorkingFolderTask));
-
 		public DeleteWorkingFolderTask() : base("Delete working folders.")
 		{
 		}
@@ -19,19 +15,19 @@ namespace ParallelPixivUtil2.Tasks
 			{
 				Indeterminate = true;
 
-				string wfolder = App.Configuration.Archive.WorkingFolder;
+				var wfolder = App.Configuration.Archive.WorkingFolder;
 				Details = $"Deleting working folder '{wfolder}'.";
-				Logger.InfoFormat("Deleting '{0}'.", wfolder);
+				Log.Information("Deleting '{0}'.", wfolder);
 				Directory.Delete(wfolder, true);
 
-				string bfolder = App.Configuration.Archive.BackupFolder;
-				Logger.InfoFormat("Deleting '{0}'.", bfolder);
+				var bfolder = App.Configuration.Archive.BackupFolder;
+				Log.Information("Deleting '{0}'.", bfolder);
 				Details = $"Deleting backup folder '{bfolder}'.";
 				Directory.Delete(bfolder, true);
 			}
 			catch (Exception e)
 			{
-				Logger.Error("Failed to delete working folders.", e);
+				Log.Error(e, "Failed to delete working folders.");
 				return true;
 			}
 
