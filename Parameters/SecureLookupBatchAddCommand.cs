@@ -18,6 +18,7 @@ namespace ParallelPixivUtil2.Parameters
 					["UserUrl"] = UserUrl,
 					["ArchiveFolder"] = App.Configuration.Archive.ArchiveFolder,
 					["WorkingFolder"] = App.Configuration.Archive.WorkingFolder,
+					["Source"] = SourcePath,
 					["BatchFile"] = BatchFile,
 				};
 			}

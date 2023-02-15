@@ -21,7 +21,6 @@ namespace ParallelPixivUtil2.Tasks
 
 		protected override bool Run()
 		{
-			Log.Information("init sl unarchiver");
 			try
 			{
 				File.WriteAllText(App.Configuration.SecureLookup.BatchFileName, Command.Parameter);
@@ -31,12 +30,12 @@ namespace ParallelPixivUtil2.Tasks
 				Log.Error(ex, "Error writing batch file.");
 			}
 
-			Log.Information("batch-finish sl unarchiver");
 			try
 			{
+				var file = Path.GetFullPath(Parameter.FileName);
 				var archiver = new Process();
-				archiver.StartInfo.FileName = Parameter.FileName;
-				archiver.StartInfo.WorkingDirectory = App.Configuration.Archive.WorkingFolder;
+				archiver.StartInfo.FileName = file;
+				archiver.StartInfo.WorkingDirectory = Path.GetDirectoryName(file);
 				archiver.StartInfo.Arguments = Parameter.Parameter;
 				archiver.StartInfo.UseShellExecute = false;
 
@@ -46,11 +45,9 @@ namespace ParallelPixivUtil2.Tasks
 					archiver.StartInfo.RedirectStandardOutput = true;
 					archiver.StartInfo.RedirectStandardError = true;
 				}
-				Log.Information("starts sl unarchiver: " + Parameter.FileName);
-				archiver.Start();
+				archiver.LogAndStart();
 				archiver.WaitForExit();
 				ExitCode = archiver.ExitCode;
-				Log.Information("exit sl unarchiver w/ code: " + ExitCode);
 			}
 			catch (Exception ex)
 			{

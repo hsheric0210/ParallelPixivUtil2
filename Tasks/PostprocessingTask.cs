@@ -36,7 +36,7 @@ namespace ParallelPixivUtil2.Tasks
 				postProcessor.StartInfo.Arguments = Parameter.Parameter;
 				postProcessor.StartInfo.UseShellExecute = show;
 				postProcessor.StartInfo.CreateNoWindow = !show;
-				postProcessor.Start();
+				postProcessor.LogAndStart();
 				postProcessor.WaitForExit();
 				ExitCode = postProcessor.ExitCode;
 			}

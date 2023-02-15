@@ -35,9 +35,10 @@ namespace ParallelPixivUtil2.Tasks
 
 			try
 			{
+				var file = Path.GetFullPath(Parameter.FileName);
 				var archiver = new Process();
-				archiver.StartInfo.FileName = Parameter.FileName;
-				archiver.StartInfo.WorkingDirectory = App.Configuration.Archive.WorkingFolder;
+				archiver.StartInfo.FileName = file;
+				archiver.StartInfo.WorkingDirectory = Path.GetDirectoryName(file);
 				archiver.StartInfo.Arguments = Parameter.Parameter;
 				archiver.StartInfo.UseShellExecute = false;
 
@@ -48,7 +49,7 @@ namespace ParallelPixivUtil2.Tasks
 					archiver.StartInfo.RedirectStandardError = true;
 				}
 
-				archiver.Start();
+				archiver.LogAndStart();
 				archiver.WaitForExit();
 				ExitCode = archiver.ExitCode;
 			}

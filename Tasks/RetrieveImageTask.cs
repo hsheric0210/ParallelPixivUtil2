@@ -36,7 +36,7 @@ namespace ParallelPixivUtil2.Tasks
 				retriever.StartInfo.Arguments = Parameter.Parameter;
 				retriever.StartInfo.UseShellExecute = show;
 				retriever.StartInfo.CreateNoWindow = !show;
-				retriever.Start();
+				retriever.LogAndStart();
 				retriever.WaitForExit();
 				ExitCode = retriever.ExitCode;
 			}
@@ -54,7 +54,7 @@ namespace ParallelPixivUtil2.Tasks
 		{
 			if (args.Identifier != MyIdentifier)
 				return;
-
+			Log.Debug("Total image count of {ident} is {count}.", MyIdentifier, args.Total);
 			TotalProgress = args.Total;
 			Indeterminate = false;
 		}

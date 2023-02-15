@@ -33,7 +33,7 @@ namespace ParallelPixivUtil2.Tasks
 					archiver.StartInfo.RedirectStandardError = true;
 				}
 
-				archiver.Start();
+				archiver.LogAndStart();
 
 				if (!ShowWindow)
 				{

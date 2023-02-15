@@ -33,9 +33,7 @@ namespace ParallelPixivUtil2.Parameters
 			{
 				if (ParameterFormat == null)
 					throw new InvalidOperationException(nameof(ParameterFormat) + " is not set");
-				string tmp = ExtraParameters + ParameterFormat.FormatDictionary(ParameterTokens);
-				Log.Warning(tmp);
-				return tmp;
+				return ExtraParameters + ParameterFormat.FormatDictionary(ParameterTokens);
 			}
 		}
 	}
