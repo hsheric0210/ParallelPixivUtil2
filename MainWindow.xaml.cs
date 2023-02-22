@@ -159,6 +159,7 @@ namespace ParallelPixivUtil2
 						var parseDataList = new ParseMemberDataListTask(memberDataListFile);
 						if (StartTask(parseDataList))
 						{
+							ICollection<MemberPage> pages = parseDataList.Parsed.SelectMany(mb => mb.Pages).ToList();
 							ViewModel.MaxProgress = parseDataList.TotalImageCount;
 
 							if (!App.OnlyPostprocessing)
@@ -167,19 +168,15 @@ namespace ParallelPixivUtil2
 
 								// Run extractor
 								ViewModel.ProgressDetails = "Retrieveing member images";
-								RunForEachPage(parseDataList.Parsed, App.Configuration.Parallelism.MaxExtractorParallellism, pixivutil2Params with
+								RunForEachPage(pages, App.Configuration.Parallelism.MaxExtractorParallellism, pixivutil2Params with
 								{
 									ParameterFormat = App.Configuration.Extractor.Parameters
-								}, (long memberId, MemberPage page, PixivUtil2Parameter param) =>
+								}, (MemberPage page, PixivUtil2Parameter param) =>
 								{
 									StartTask(new RetrieveImageTask(param with
 									{
-										Identifier = $"{memberId}_page{page.Page}",
-										Member = new MemberSubParameter
-										{
-											MemberID = memberId,
-											Page = page
-										}
+										Identifier = $"{page.MemberId}_page{page.Page}",
+										Page = page
 									}));
 								});
 
@@ -190,11 +187,10 @@ namespace ParallelPixivUtil2
 								ViewModel.MaxProgress = 10;
 								ViewModel.IsCurrentProgressIndeterminate = true;
 								ViewModel.ProgressDetails = "Downloading member images";
-								RunForEachPage(parseDataList.Parsed, App.Configuration.Parallelism.MaxDownloaderParallellism, aria2Params, (long memberId, MemberPage page, Aria2Parameter param) =>
+								RunForEachPage(pages, App.Configuration.Parallelism.MaxDownloaderParallellism, aria2Params, (MemberPage page, Aria2Parameter param) =>
 								{
 									StartTask(new DownloadImageTask(param with
 									{
-										TargetMemberID = memberId,
 										TargetPage = page
 									}));
 								});
@@ -207,19 +203,15 @@ namespace ParallelPixivUtil2
 
 							// Run post-processor
 							ViewModel.ProgressDetails = "Post-processing member images";
-							RunForEachPage(parseDataList.Parsed, App.Configuration.Parallelism.MaxPostprocessorParallellism, pixivutil2Params with
+							RunForEachPage(pages, App.Configuration.Parallelism.MaxPostprocessorParallellism, pixivutil2Params with
 							{
 								ParameterFormat = App.Configuration.Postprocessor.Parameters
-							}, (long memberId, MemberPage page, PixivUtil2Parameter param) =>
+							}, (MemberPage page, PixivUtil2Parameter param) =>
 							{
 								StartTask(new PostprocessingTask(param with
 								{
-									Identifier = $"{memberId}_page{page.Page}",
-									Member = new MemberSubParameter
-									{
-										MemberID = memberId,
-										Page = page
-									}
+									Identifier = $"{page.MemberId}_page{page.Page}",
+									Page = page
 								}));
 							});
 
@@ -233,7 +225,19 @@ namespace ParallelPixivUtil2
 									var successful = true;
 									if (App.Configuration.SecureLookup.Enabled)
 									{
-										successful = StartTask(new SecureLookupArchivingTask(slArchiveParams, detFiles.Select(d => new SecureLookupBatchAddCommand(Path.GetFileName(d), "@ pixiv.net", "https://pixiv.net/users/" + Path.GetFileName(d), d, App.Configuration.SecureLookup.BatchFileName) { ParameterFormat = App.Configuration.SecureLookup.ArchiveCommand }), App.Configuration.SecureLookup.ShowWindow));
+										var memberLookup = parseDataList.Parsed.ToDictionary(mb => mb.MemberId.ToString());
+										successful = StartTask(new SecureLookupArchivingTask(slArchiveParams, detFiles.Select(d =>
+										{
+											var filename = Path.GetFileName(d);
+											var userToken = "unknown";
+											var userName = "<unknown>";
+											if (memberLookup.TryGetValue(filename, out Member? mem))
+											{
+												userToken = mem.MemberToken;
+												userName = mem.MemberName;
+											}
+											return new SecureLookupBatchAddCommand(filename, userToken, userName, "https://pixiv.net/users/" + filename, d, App.Configuration.SecureLookup.BatchFileName) { ParameterFormat = App.Configuration.SecureLookup.ArchiveCommand };
+										}), App.Configuration.SecureLookup.ShowWindow));
 									}
 									else
 									{
@@ -309,28 +313,25 @@ namespace ParallelPixivUtil2
 			Task.WhenAll(tasks).Wait();
 		}
 
-		private static void RunForEachPage<T>(IDictionary<long, ICollection<MemberPage>> memberPageList, int parallellismLimit, T parameter, Action<long, MemberPage, T> callback)
+		private static void RunForEachPage<T>(ICollection<MemberPage> pages, int parallellismLimit, T parameter, Action<MemberPage, T> callback)
 			where T : AbstractParameter
 		{
 			using var semaphore = new SemaphoreSlim(parallellismLimit);
 			var tasks = new List<Task>();
-			foreach ((var memberId, ICollection<MemberPage> pages) in memberPageList)
+			foreach (MemberPage page in pages)
 			{
-				foreach (MemberPage page in pages)
+				semaphore.Wait();
+				tasks.Add(Task.Run(() =>
 				{
-					semaphore.Wait();
-					tasks.Add(Task.Run(() =>
+					try
 					{
-						try
-						{
-							callback(memberId, page, parameter);
-						}
-						finally
-						{
-							semaphore.Release();
-						}
-					}));
-				}
+						callback(page, parameter);
+					}
+					finally
+					{
+						semaphore.Release();
+					}
+				}));
 			}
 
 			Task.WhenAll(tasks).Wait();

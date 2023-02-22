@@ -8,7 +8,7 @@ namespace ParallelPixivUtil2.Tasks
 	{
 		private readonly Aria2Parameter Parameter;
 
-		public DownloadImageTask(Aria2Parameter parameter) : base($"Download member image of {parameter.TargetMemberID} page {parameter.TargetPage!.Page} (File index {parameter.TargetPage!.FileIndex})") => Parameter = parameter;
+		public DownloadImageTask(Aria2Parameter parameter) : base($"Download member image of {parameter.TargetPage.MemberId} page {parameter.TargetPage.Page} (File index {parameter.TargetPage!.FileIndex})") => Parameter = parameter;
 
 		protected override bool Run()
 		{

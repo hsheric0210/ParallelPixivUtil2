@@ -12,12 +12,9 @@ namespace ParallelPixivUtil2.Tasks
 
 		public RetrieveImageTask(PixivUtil2Parameter parameter) : base("Retrieve member image")
 		{
-			if (parameter.Member == null)
-				throw new ArgumentException("parameter.Member can't be null when initializing " + nameof(RetrieveImageTask));
-
 			Parameter = parameter;
 
-			Details = $"Retrieve member image of {parameter.Member?.MemberID} page {parameter.Member?.Page!.Page} (File index {parameter.Member?.Page!.FileIndex})";
+			Details = $"Retrieve member image of {parameter.Page.MemberId} page {parameter.Page.Page} (File index {parameter.Page.FileIndex})";
 
 			MyIdentifier = parameter.Identifier;
 			IpcManager.OnIpcTotalNotify += OnTotalNotify;

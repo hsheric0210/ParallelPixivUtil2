@@ -1,6 +1,7 @@
 ﻿using ParallelPixivUtil2.Parameters;
 using Serilog;
 using System.IO;
+using System.Text;
 
 namespace ParallelPixivUtil2.Tasks
 {
@@ -8,7 +9,7 @@ namespace ParallelPixivUtil2.Tasks
 	{
 		private readonly string MemberDataList;
 
-		public IDictionary<long, ICollection<MemberPage>> Parsed
+		public ICollection<Member> Parsed
 		{
 			get; private set;
 		} = null!;
@@ -28,7 +29,7 @@ namespace ParallelPixivUtil2.Tasks
 		protected override bool Run()
 		{
 			var maxImagesPerPage = App.Configuration.Magics.MaxImagesPerPage;
-			var memberPageList = new Dictionary<long, ICollection<MemberPage>>();
+			var memberPageList = new List<Member>();
 			foreach (var line in File.ReadAllLines(MemberDataList))
 			{
 				if (string.IsNullOrWhiteSpace(line))
@@ -40,12 +41,11 @@ namespace ParallelPixivUtil2.Tasks
 
 				if (memberTotalImages > 0)
 				{
-					if (!memberPageList.ContainsKey(memberId))
-						memberPageList[memberId] = new List<MemberPage>();
-
+					var pages = new List<MemberPage>();
 					var pageCount = (memberTotalImages - memberTotalImages % maxImagesPerPage) / maxImagesPerPage + 1;
 					for (var i = 1; i <= pageCount; i++)
-						memberPageList[memberId].Add(new MemberPage(i, pageCount - i + 1));
+						pages.Add(new MemberPage(memberId, i, pageCount - i + 1));
+					memberPageList.Add(new Member(memberId, pieces[2], Encoding.UTF8.GetString(Convert.FromBase64String(pieces[3])), pages));
 					TotalPageCount += pageCount;
 					TotalImageCount += memberTotalImages;
 					Log.Debug("Member {0} has {1} images -> {2} pages.", memberId, memberTotalImages, pageCount);

@@ -27,11 +27,11 @@
 				if (Aria2InputPath != null)
 					dict["aria2InputPath"] = Aria2InputPath;
 
-				if (Member != null)
+				if (Page != null)
 				{
-					dict["memberID"] = Member?.MemberID.ToString()!;
-					dict["page"] = Member?.Page!.Page.ToString()!;
-					dict["fileIndex"] = Member?.Page!.FileIndex.ToString()!;
+					dict["memberID"] = Page.MemberId.ToString()!;
+					dict["page"] = Page.Page.ToString()!;
+					dict["fileIndex"] = Page.FileIndex.ToString()!;
 				}
 
 				if (MemberDataListFile != null)
@@ -44,27 +44,27 @@
 			}
 		}
 
-		public string? Aria2InputPath
+		public string Aria2InputPath
 		{
 			get; set;
 		}
 
-		public string? DatabasePath
+		public string DatabasePath
 		{
 			get; set;
 		}
 
-		public string? MemberDataListFile
+		public string MemberDataListFile
 		{
 			get; set;
 		}
 
-		public string? Identifier
+		public string Identifier
 		{
 			get; set;
 		}
 
-		public MemberSubParameter? Member
+		public MemberPage Page
 		{
 			get; set;
 		}

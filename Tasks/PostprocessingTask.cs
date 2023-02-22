@@ -12,12 +12,12 @@ namespace ParallelPixivUtil2.Tasks
 
 		public PostprocessingTask(PixivUtil2Parameter parameter) : base("Post-processing")
 		{
-			if (parameter.Member == null)
+			if (parameter.Page == null)
 				throw new ArgumentException("parameter.Member can't be null when initializing " + nameof(PostprocessingTask));
 
 			Parameter = parameter;
 
-			Details = $"Post-processing of {parameter.Member?.MemberID} page {parameter.Member?.Page!.Page} (File index {parameter.Member?.Page!.FileIndex})";
+			Details = $"Post-processing of {parameter.Page.MemberId} page {parameter.Page.Page} (File index {parameter.Page.FileIndex})";
 
 			MyIdentifier = parameter.Identifier;
 			IpcManager.OnIpcTotalNotify += OnTotalNotify;

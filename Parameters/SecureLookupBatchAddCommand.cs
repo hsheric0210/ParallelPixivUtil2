@@ -3,7 +3,7 @@ using System.Text;
 
 namespace ParallelPixivUtil2.Parameters
 {
-	public sealed record SecureLookupBatchAddCommand(string UserId, string UserName, string UserUrl, string SourcePath, string BatchFile) : AbstractParameter
+	public sealed record SecureLookupBatchAddCommand(string UserId, string UserToken, string UserName, string UserUrl, string SourcePath, string BatchFile) : AbstractParameter
 	{
 		public override string FileName => "";
 
@@ -14,6 +14,7 @@ namespace ParallelPixivUtil2.Parameters
 				return new Dictionary<string, string>
 				{
 					["UserID"] = UserId,
+					["UserToken"] = UserToken,
 					["UserName"] = UserName,
 					["UserUrl"] = UserUrl,
 					["ArchiveFolder"] = App.Configuration.Archive.ArchiveFolder,

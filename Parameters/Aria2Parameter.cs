@@ -4,12 +4,7 @@
 	{
 		public override string FileName => Executable;
 
-		public long? TargetMemberID
-		{
-			get; set;
-		}
-
-		public MemberPage? TargetPage
+		public MemberPage TargetPage
 		{
 			get; set;
 		}
@@ -25,11 +20,9 @@
 					["databasePath"] = DatabasePath
 				};
 
-				if (TargetMemberID != null)
-					dict["memberID"] = TargetMemberID.ToString()!;
-
 				if (TargetPage != null)
 				{
+					dict["memberID"] = TargetPage.MemberId.ToString()!;
 					dict["page"] = TargetPage!.Page.ToString();
 					dict["fileIndex"] = TargetPage!.FileIndex.ToString();
 				}
